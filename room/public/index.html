@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude Room</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Join / create screen -->
+  <main id="setup" class="setup" hidden>
+    <div class="card">
+      <h1><img src="/icon.svg" alt="" width="28" height="28"> Claude Room</h1>
+      <p class="lead">Chat with your team and Claude in one shared room. Everyone uses their own Anthropic API key, so each person pays for the questions they ask.</p>
+
+      <form id="setup-form">
+        <label>Your name
+          <input id="f-name" required maxlength="40" autocomplete="nickname" placeholder="e.g. Vlad">
+        </label>
+        <label>Your Anthropic API key <span class="muted">(optional to just chat)</span>
+          <input id="f-key" type="password" autocomplete="off" placeholder="sk-ant-...">
+        </label>
+        <p class="hint">Get one at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It stays in this browser and is only used for questions <em>you</em> ask. Nobody else in the room can see it.</p>
+
+        <div id="new-room-fields">
+          <label>Room name
+            <input id="f-room" maxlength="80" placeholder="e.g. Launch plan">
+          </label>
+        </div>
+        <p id="joining" class="joining" hidden>You're joining <strong id="joining-id"></strong></p>
+
+        <button type="submit" class="primary" id="setup-submit">Create room</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Room -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="title">
+        <img src="/icon.svg" alt="" width="22" height="22">
+        <h2 id="room-name" title="Click to rename"></h2>
+      </div>
+      <div class="actions">
+        <button id="invite" class="ghost">Invite</button>
+        <button id="open-settings" class="ghost">Settings</button>
+        <button id="toggle-people" class="ghost people-btn">People <span id="people-count">0</span></button>
+      </div>
+    </header>
+
+    <div class="body">
+      <section class="chat">
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="typing" class="typing"></div>
+        <form id="composer" class="composer">
+          <textarea id="input" rows="1" placeholder="Message the room… (start with @claude to ask Claude)"></textarea>
+          <div class="composer-buttons">
+            <button type="submit" class="ghost" title="Send to the room (Enter)">Send</button>
+            <button type="button" id="ask" class="primary" title="Send and ask Claude, paid with your key (Ctrl+Enter)">Ask Claude</button>
+            <button type="button" id="stop" class="danger" hidden>Stop</button>
+          </div>
+        </form>
+      </section>
+
+      <aside id="people" class="people">
+        <h3>In the room</h3>
+        <ul id="member-list"></ul>
+        <p class="hint">🔑 = asks Claude with their own API key. 🐾 = asks with their own Claude subscription through their Pip desktop pet.</p>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <dialog id="settings">
+    <form method="dialog" id="settings-form">
+      <h3>Your settings</h3>
+      <label>Name
+        <input id="s-name" maxlength="40" disabled>
+      </label>
+      <label>Pay for my questions with
+        <select id="s-billing">
+          <option value="api">My Anthropic API key</option>
+          <option value="pip">My Claude subscription (Pip desktop pet)</option>
+        </select>
+      </label>
+      <div id="billing-api">
+        <label>Anthropic API key
+          <input id="s-key" type="password" autocomplete="off" placeholder="sk-ant-...">
+        </label>
+        <label>Model for your questions
+          <select id="s-model"></select>
+        </label>
+        <label>Effort
+          <select id="s-effort">
+            <option value="low">Low: fastest, cheapest</option>
+            <option value="medium">Medium</option>
+            <option value="high">High: most thorough</option>
+          </select>
+        </label>
+        <p class="hint">Your key is saved in this browser only.</p>
+      </div>
+      <div id="billing-pip" hidden>
+        <p class="hint">Pip runs Claude Code on your own computer, signed in with your own Claude subscription. In Pip, open Settings → Claude Room and enter:</p>
+        <div class="pair">
+          <div><span class="muted">Room link</span><code id="pair-link"></code></div>
+          <div><span class="muted">Pairing code</span><code id="pair-code" class="big"></code></div>
+        </div>
+        <p class="hint" id="pip-status">Pip is not connected yet.</p>
+      </div>
+      <div class="row">
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

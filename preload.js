@@ -1,0 +1,30 @@
+// Safe bridge between the pet's web page and the app.
+const { contextBridge, ipcRenderer } = require('electron');
+
+const on = (channel) => (fn) => ipcRenderer.on(channel, (_e, v) => fn(v));
+
+contextBridge.exposeInMainWorld('pip', {
+  ask: (text) => ipcRenderer.invoke('pet:ask', text),
+  stop: () => ipcRenderer.send('pet:stop'),
+  newChat: () => ipcRenderer.send('pet:new-chat'),
+  ignoreMouse: (ignore) => ipcRenderer.send('pet:ignore-mouse', ignore),
+  drag: (phase, dx = 0, dy = 0) => ipcRenderer.send('pet:drag', { phase, dx, dy }),
+  chatOpen: (open) => ipcRenderer.send('pet:chat-open', open),
+  getSettings: () => ipcRenderer.invoke('pet:get-settings'),
+  skinPreview: (id, dataUrl) => ipcRenderer.send('pet:skin-preview', { id, dataUrl }),
+  deleteSkin: (id) => ipcRenderer.send('pet:delete-skin', id),
+  updateSettings: (patch) => ipcRenderer.send('pet:update-settings', patch),
+  openLogin: () => ipcRenderer.send('pet:open-login'),
+  openFolder: () => ipcRenderer.send('pet:open-folder'),
+  quit: () => ipcRenderer.send('pet:quit'),
+  roomConnect: (link, code) => ipcRenderer.invoke('room:connect', { link, code }),
+  roomDisconnect: () => ipcRenderer.send('room:disconnect'),
+  onState: on('pet:state'),
+  onText: on('pet:text'),
+  onTool: on('pet:tool'),
+  onDone: on('pet:done'),
+  onMoving: on('pet:moving'),
+  onSettings: on('pet:settings'),
+  onOpenChat: on('pet:open-chat'),
+  onRoomStatus: on('room:status'),
+});

@@ -1,0 +1,72 @@
+{
+  "_about": "Pip's skins. Read by blender/build_pet.py (to render previews) and by the app (to recolor the model live). Colors are sRGB hex. 'parts' lists which optional pieces are visible.",
+  "default": "ember",
+  "skins": {
+    "ember": {
+      "label": "Ember",
+      "parts": ["stem", "bulb"],
+      "body":      { "color": "#E07A5F", "roughness": 0.45 },
+      "belly":     { "color": "#F6E3C6", "roughness": 0.6 },
+      "eye":       { "color": "#1E1B2E", "roughness": 0.15 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 0.6 },
+      "cheek":     { "color": "#F59A9A", "roughness": 0.7 },
+      "bulb":      { "color": "#FFC857", "emissive": "#FFB020", "emissiveIntensity": 2.5 },
+      "accent":    { "color": "#6B4E3D", "roughness": 0.6 }
+    },
+    "mint": {
+      "label": "Mint Sprout",
+      "parts": ["stem", "leaf"],
+      "body":      { "color": "#7ED6B2", "roughness": 0.5 },
+      "belly":     { "color": "#EAFFF6", "roughness": 0.6 },
+      "eye":       { "color": "#1D3B33", "roughness": 0.15 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 0.6 },
+      "cheek":     { "color": "#FF9FB2", "roughness": 0.7 },
+      "bulb":      { "color": "#FFF3A0", "emissive": "#FFE45C", "emissiveIntensity": 1.5 },
+      "accent":    { "color": "#3FA34D", "roughness": 0.5 }
+    },
+    "midnight": {
+      "label": "Midnight",
+      "parts": ["stem", "bulb"],
+      "body":      { "color": "#2B2D5C", "roughness": 0.35 },
+      "belly":     { "color": "#41468F", "roughness": 0.5 },
+      "eye":       { "color": "#7DF9FF", "emissive": "#38E8FF", "emissiveIntensity": 2.0 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 1.0 },
+      "cheek":     { "color": "#8A7DFF", "emissive": "#6A5CFF", "emissiveIntensity": 0.6 },
+      "bulb":      { "color": "#7DF9FF", "emissive": "#38E8FF", "emissiveIntensity": 3.0 },
+      "accent":    { "color": "#1A1B3A", "roughness": 0.5 }
+    },
+    "royal": {
+      "label": "Royal",
+      "parts": ["crown"],
+      "body":      { "color": "#8E5CC9", "roughness": 0.4 },
+      "belly":     { "color": "#EADCFF", "roughness": 0.6 },
+      "eye":       { "color": "#24123D", "roughness": 0.15 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 0.6 },
+      "cheek":     { "color": "#FF8FC7", "roughness": 0.7 },
+      "bulb":      { "color": "#FFC857", "emissive": "#FFB020", "emissiveIntensity": 2.0 },
+      "accent":    { "color": "#F2C14E", "metalness": 1.0, "roughness": 0.25 }
+    },
+    "robo": {
+      "label": "Robo",
+      "parts": ["stem", "bulb", "headphones"],
+      "body":      { "color": "#AEB8C6", "metalness": 0.7, "roughness": 0.3 },
+      "belly":     { "color": "#58626F", "metalness": 0.4, "roughness": 0.4 },
+      "eye":       { "color": "#5CFFB0", "emissive": "#2BFF96", "emissiveIntensity": 1.8 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 0.8 },
+      "cheek":     { "color": "#FF6B6B", "emissive": "#FF3B3B", "emissiveIntensity": 0.5 },
+      "bulb":      { "color": "#FF4D4D", "emissive": "#FF2020", "emissiveIntensity": 3.0 },
+      "accent":    { "color": "#2E3440", "metalness": 0.3, "roughness": 0.35 }
+    },
+    "frost": {
+      "label": "Frost",
+      "parts": ["beanie"],
+      "body":      { "color": "#A8DAFF", "roughness": 0.45 },
+      "belly":     { "color": "#FFFFFF", "roughness": 0.6 },
+      "eye":       { "color": "#14304A", "roughness": 0.15 },
+      "highlight": { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 0.6 },
+      "cheek":     { "color": "#FF9EB5", "roughness": 0.7 },
+      "bulb":      { "color": "#FFFFFF", "emissive": "#FFFFFF", "emissiveIntensity": 1.0 },
+      "accent":    { "color": "#E63946", "roughness": 0.8 }
+    }
+  }
+}

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'sha256-iDWQetb5GYyuwmSzsD+1wj6x3FuZFb+JIvwrtNMCZD8='; connect-src 'self'">
+  <title>Pip</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "../node_modules/three/build/three.module.js", "three/addons/": "../node_modules/three/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <!-- Chat / settings panel, opens when you tap Pip -->
+  <section id="panel" class="panel" hidden>
+    <header class="panel-head">
+      <strong id="panel-title">Pip</strong>
+      <span class="spacer"></span>
+      <button id="btn-new" class="icon" title="New chat">＋</button>
+      <button id="btn-gear" class="icon" title="Settings">⚙</button>
+      <button id="btn-close" class="icon" title="Close">✕</button>
+    </header>
+
+    <div id="chat" class="chat">
+      <div id="log" class="log"></div>
+      <div id="activity" class="activity" hidden></div>
+      <form id="composer" class="composer">
+        <input id="input" autocomplete="off" placeholder="Ask Pip… e.g. help me build a game">
+        <button id="btn-send" type="submit" class="primary">Go</button>
+        <button id="btn-stop" type="button" class="danger" hidden>Stop</button>
+      </form>
+    </div>
+
+    <div id="settings" class="settings" hidden>
+      <h4>Skins</h4>
+      <div id="skins" class="skins"></div>
+
+      <h4>Behavior</h4>
+      <label class="toggle"><input type="checkbox" id="opt-wander"> Float around my screen</label>
+      <label class="toggle"><input type="checkbox" id="opt-access"> Allow Pip to use my computer</label>
+      <p class="hint">With access, Pip can see your screen, use the mouse and keyboard, and create files in its projects folder. It runs on your own Claude Code subscription.</p>
+      <button id="btn-folder" class="ghost">Open Pip Projects folder</button>
+
+      <h4>Claude Room</h4>
+      <p class="hint">Let Pip answer for you in a shared room using your subscription. In the room, open Settings, pick "Use my Claude subscription (Pip)", and copy the pairing code.</p>
+      <input id="room-link" placeholder="Room link, e.g. https://…/r/launch-plan-abc123">
+      <input id="room-code" placeholder="Pairing code" maxlength="8">
+      <div class="row">
+        <button id="btn-room" class="primary">Connect</button>
+        <button id="btn-room-off" class="ghost" hidden>Disconnect</button>
+        <span id="room-status" class="hint"></span>
+      </div>
+
+      <div class="row bottom">
+        <button id="btn-quit" class="ghost">Quit Pip</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Little status bubble when the panel is closed -->
+  <div id="bubble" class="bubble" hidden></div>
+
+  <!-- Pip -->
+  <div id="pet-wrap" class="pet-wrap">
+    <canvas id="pet"></canvas>
+  </div>
+
+  <script type="module" src="ui.js"></script>
+</body>
+</html>

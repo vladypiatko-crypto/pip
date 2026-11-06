@@ -1,0 +1,15 @@
+{
+  "name": "claude-room",
+  "version": "1.0.0",
+  "description": "Shared chat rooms where a group works with Claude together, each person paying with their own API key.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "ws": "^8.18.0"
+  }
+}
