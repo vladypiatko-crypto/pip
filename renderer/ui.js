@@ -306,8 +306,7 @@ let lastSkinDef = settings.skins.skins[settings.skin] ? stripPreview(settings.sk
 function stripPreview(sk) { const { preview, ...rest } = sk; return rest; }
 pip.onSettings((s) => {
   settings = s;
-  if (document.activeElement !== $('pick-model')) $('pick-model').value = s.model || '';
-  if (document.activeElement !== $('pick-effort')) $('pick-effort').value = s.effort || '';
+  renderPickers();
   if (view === 'rooms') renderRooms();
   pet.skins = s.skins; // includes skins Pip just designed
   const now = s.skins.skins[s.skin];
@@ -391,10 +390,68 @@ pip.onUpdateAvailable((r) => {
 });
 
 // ---------- model & effort ----------
-$('pick-model').value = settings.model || '';
-$('pick-effort').value = settings.effort || '';
-$('pick-model').onchange = (e) => pip.updateSettings({ model: e.target.value });
-$('pick-effort').onchange = (e) => pip.updateSettings({ effort: e.target.value });
+const MODELS = [
+  { id: '', name: 'Auto', desc: "Claude Code's default for your plan", ico: '✳' },
+  { id: 'claude-opus-5-5', name: 'Opus 5.5', desc: 'Smartest for most tasks', ico: '◆' },
+  { id: 'claude-sonnet-5-5', name: 'Sonnet 5.5', desc: 'Fast and capable', ico: '◇' },
+  { id: 'claude-haiku-5-5', name: 'Haiku 5.5', desc: 'Quickest, uses the least', ico: '○' },
+  { id: 'claude-fable-5-1', name: 'Fable 5.1', desc: 'Most capable (if your plan has it)', ico: '★' },
+];
+const EFFORTS = [
+  { id: '', name: 'Auto', desc: 'Let Claude decide', level: 0 },
+  { id: 'low', name: 'Low', desc: 'Quick answers, uses the least', level: 1 },
+  { id: 'medium', name: 'Medium', desc: 'Balanced', level: 2 },
+  { id: 'high', name: 'High', desc: 'Thinks things through', level: 3 },
+  { id: 'xhigh', name: 'Extra high', desc: 'For tricky problems', level: 4 },
+  { id: 'max', name: 'Max', desc: 'Thinks hardest, uses the most', level: 5 },
+];
+const barsHtml = (level) => Array.from({ length: 5 }, (_, i) => `<i class="${i < level ? 'on' : ''}"></i>`).join('');
+
+function renderPickers() {
+  const m = MODELS.find((x) => x.id === (settings.model || '')) || { name: settings.model, ico: '✳' };
+  $('pick-model-text').textContent = m.name;
+  $('pick-model').querySelector('.pill-ico').textContent = m.ico;
+  const e = EFFORTS.find((x) => x.id === (settings.effort || '')) || EFFORTS[0];
+  $('pick-effort-text').textContent = e.level ? e.name : 'Effort';
+  $('pick-effort-bars').innerHTML = barsHtml(e.level || 0);
+  $('pick-effort').classList.toggle('auto', !e.level);
+}
+
+function buildMenu(menu, items, current, render, onPick) {
+  menu.innerHTML = '';
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.className = 'menu-item' + (it.id === current ? ' on' : '');
+    b.setAttribute('role', 'menuitemradio');
+    b.innerHTML = `<span class="mi-ico">${render(it)}</span><span class="mi-body"><b></b><small></small></span><span class="mi-check">✓</span>`;
+    b.querySelector('b').textContent = it.name;
+    b.querySelector('small').textContent = it.desc;
+    b.onclick = () => { onPick(it.id); closeMenus(); };
+    menu.append(b);
+  }
+}
+function closeMenus() {
+  for (const id of ['menu-model', 'menu-effort']) $(id).hidden = true;
+  for (const id of ['pick-model', 'pick-effort']) $(id).classList.remove('open');
+}
+function toggleMenu(which) {
+  const menu = $('menu-' + which);
+  const wasOpen = !menu.hidden;
+  closeMenus();
+  if (wasOpen) return;
+  if (which === 'model') {
+    buildMenu(menu, MODELS, settings.model || '', (it) => it.ico, (id) => { settings.model = id; renderPickers(); pip.updateSettings({ model: id }); });
+  } else {
+    buildMenu(menu, EFFORTS, settings.effort || '', (it) => `<span class="bars">${barsHtml(it.level)}</span>`, (id) => { settings.effort = id; renderPickers(); pip.updateSettings({ effort: id }); });
+  }
+  menu.hidden = false;
+  $('pick-' + which).classList.add('open');
+}
+$('pick-model').onclick = (e) => { e.stopPropagation(); toggleMenu('model'); };
+$('pick-effort').onclick = (e) => { e.stopPropagation(); toggleMenu('effort'); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.menu')) closeMenus(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); }, true);
+renderPickers();
 
 // ---------- continue a chat ----------
 const ago = (ts) => {

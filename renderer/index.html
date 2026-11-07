@@ -25,21 +25,14 @@
 
     <div id="chat" class="chat">
       <div class="modelbar">
-        <select id="pick-model" title="Model">
-          <option value="">Model: default</option>
-          <option value="claude-opus-5-5">Opus 5.5</option>
-          <option value="claude-sonnet-5-5">Sonnet 5.5</option>
-          <option value="claude-haiku-5-5">Haiku 5.5</option>
-          <option value="claude-fable-5-1">Fable 5.1</option>
-        </select>
-        <select id="pick-effort" title="Effort: how hard Claude thinks (more effort uses more of your plan)">
-          <option value="">Effort: default</option>
-          <option value="low">Low effort</option>
-          <option value="medium">Medium effort</option>
-          <option value="high">High effort</option>
-          <option value="xhigh">Extra high effort</option>
-          <option value="max">Max effort</option>
-        </select>
+        <button id="pick-model" class="pill" aria-haspopup="menu" title="Choose the model">
+          <span class="pill-ico">✳</span><span class="pill-text" id="pick-model-text">Default</span><span class="chev">▾</span>
+        </button>
+        <button id="pick-effort" class="pill" aria-haspopup="menu" title="Effort: how hard Claude thinks">
+          <span class="bars" id="pick-effort-bars"><i></i><i></i><i></i><i></i><i></i></span><span class="pill-text" id="pick-effort-text">Effort</span><span class="chev">▾</span>
+        </button>
+        <div id="menu-model" class="menu" role="menu" hidden></div>
+        <div id="menu-effort" class="menu" role="menu" hidden></div>
       </div>
       <div id="log" class="log"></div>
       <div id="activity" class="activity" hidden></div>
