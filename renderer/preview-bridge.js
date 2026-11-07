@@ -4,7 +4,7 @@ const listeners = {};
 const emit = (ch, v) => (listeners[ch] || []).forEach((f) => f(v));
 const on = (ch) => (fn) => { (listeners[ch] ||= []).push(fn); };
 const skins = await (await fetch('../assets/skins.json')).json();
-const settings = { skin: new URLSearchParams(location.search).get('skin') || skins.default, wander: true, computerAccess: 'granted', room: null, skins, name: 'Vlad', model: '', effort: '', recentRooms: [{ id: 'game-jam-3fa9c2', name: 'Game jam', hosted: true, ts: Date.now() - 7200e3 }, { id: 'x', name: "Sam's study room", link: 'https://x/r/x', ts: Date.now() - 86400e3 }] };
+const settings = { skin: new URLSearchParams(location.search).get('skin') || skins.default, wander: true, computerAccess: 'granted', room: null, skins, name: 'Vlad', model: '', effort: '', backup: { provider: '', auto: true }, recentRooms: [{ id: 'game-jam-3fa9c2', name: 'Game jam', hosted: true, ts: Date.now() - 7200e3 }, { id: 'x', name: "Sam's study room", link: 'https://x/r/x', ts: Date.now() - 86400e3 }] };
 
 export default {
   async getSettings() { return { ...settings }; },
@@ -27,6 +27,10 @@ export default {
   skinPreview() {},
   deleteSkin() {},
   copy() {},
+  hide() {},
+  async backupSave(b) { Object.assign(settings.backup, b, { hasKey: !!b.key || settings.backup.hasKey, label: b.provider ? `${b.provider} · ${b.model}` : null }); return { ok: true }; },
+  async backupModels() { return { models: ['qwen3-coder:latest', 'gpt-oss:20b'] }; },
+  async backupTest() { return { ok: true, text: 'Backup AI works!' }; },
   async version() { return { sha: 'f64a24a0', date: new Date().toISOString() }; },
   async checkUpdate() { return { upToDate: false, latest: { sha: 'abc', date: new Date().toISOString(), message: 'Add a pip-pet update command' } }; },
   async update() { return { ok: true }; },

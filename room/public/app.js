@@ -234,12 +234,12 @@
     err.hidden = !msg.error;
     err.textContent = msg.error || '';
     const foot = el.querySelector('.footer');
-    const viaPip = msg.billing === 'pip' || msg.model === 'claude-code';
+    const viaPip = msg.billing === 'pip' || msg.billing === 'backup' || msg.model === 'claude-code';
     if (msg.type === 'claude' && !msg.streaming && (msg.usage || (viaPip && !msg.error))) {
-      const name = msg.model === 'claude-code' ? 'Claude Code' : state.models[msg.model]?.label || msg.model;
+      const name = msg.billing === 'backup' ? msg.backupLabel || 'Backup AI' : msg.model === 'claude-code' ? 'Claude Code' : state.models[msg.model]?.label || msg.model;
       const model = viaPip ? `${name} via Pip` : name;
       const u = msg.usage ? ` · ${fmt(msg.usage.input)} in / ${fmt(msg.usage.output)} out tokens` : '';
-      const payer = viaPip ? `${msg.via}'s Claude subscription` : msg.via;
+      const payer = msg.billing === 'backup' ? `${msg.via}'s backup AI` : viaPip ? `${msg.via}'s Claude subscription` : msg.via;
       foot.textContent = `${model} · paid by ${payer}${u}`;
       foot.hidden = false;
     }
@@ -387,14 +387,15 @@
       p.asks++;
       p.input += m.usage?.input || 0;
       p.output += m.usage?.output || 0;
-      if (m.billing === 'pip' || m.model === 'claude-code') p.sub++; else p.api++;
+      if (m.billing === 'backup') p.backup = (p.backup || 0) + 1;
+      else if (m.billing === 'pip' || m.model === 'claude-code') p.sub++; else p.api++;
       people.set(m.via, p);
     }
     const rows = [...people.entries()].sort((a, b) => b[1].asks - a[1].asks);
     const t = $('usage-table');
     if (!rows.length) { t.innerHTML = '<tr><td>Nobody has asked Claude in this room yet.</td></tr>'; $('usage').showModal(); return; }
     const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const paidWith = (p) => [p.sub && '🐾 subscription', p.api && '🔑 API key'].filter(Boolean).join(' + ');
+    const paidWith = (p) => [p.sub && '🐾 subscription', p.backup && '🧩 backup AI', p.api && '🔑 API key'].filter(Boolean).join(' + ');
     let tot = { asks: 0, input: 0, output: 0 };
     t.innerHTML = '<tr><th>Person</th><th class="num">Questions</th><th class="num">Tokens in</th><th class="num">Tokens out</th><th>Paid with</th></tr>' +
       rows.map(([name, p]) => {

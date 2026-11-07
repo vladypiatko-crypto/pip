@@ -70,6 +70,8 @@ npm start
 - **Model and effort:** the two menus above the chat pick the model (Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable 5.1, if your plan includes it) and how hard Claude thinks (low to max). Lower effort and smaller models use less of your plan.
 - **📊 Usage:** see how much of your plan's **5-hour** and **weekly** limits you've used and when they reset, plus how many answers and tokens Pip used today, this week and this month, a 14-day chart, and a breakdown by model and by shared rooms.
 - **👥 Chat together:** see below.
+- **Backup AI** (⚙ → Backup AI): keeps Pip working when your Claude limit runs out. Choose **Ollama** (a free model running on your own computer; install it from [ollama.com](https://ollama.com) and download a model that can use tools, e.g. `ollama pull qwen3-coder`), **OpenRouter** (models from many companies, pay per use), an **Anthropic API key**, or any other Anthropic-compatible server. Press **Test** to check it. When your limit is hit, Pip switches automatically, says so in the chat, and goes back to your Claude plan when the limit resets. You can also pick **Backup AI** in the model menu to use it on purpose. Your Claude login is never sent to the backup service, and the backup's API key is stored encrypted with your system's keychain where available. Other models can be weaker at using tools than Claude.
+- **Closing Pip hides it to the tray** (the icons next to the clock). Click the tray icon to bring Pip back; right-click → **Quit Pip** to really close it.
 - Pip won't type passwords or payment details, buy things, or delete your files. It stops and asks you to do those parts.
 
 ## Skins

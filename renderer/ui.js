@@ -350,6 +350,7 @@ function renderSettings() {
     };
     box.append(make);
   }
+  renderBackup();
   $('opt-wander').checked = !!settings.wander;
   $('opt-access').checked = settings.computerAccess === 'granted';
 }
@@ -357,6 +358,68 @@ $('opt-wander').onchange = (e) => pip.updateSettings({ wander: e.target.checked 
 $('opt-access').onchange = (e) => pip.updateSettings({ computerAccess: e.target.checked ? 'granted' : 'denied' });
 $('btn-folder').onclick = () => pip.openFolder();
 $('btn-quit').onclick = () => pip.quit();
+$('btn-hide').onclick = () => { togglePanel(false); pip.hide(); };
+
+// ---------- backup AI ----------
+const BK_HELP = {
+  ollama: 'Free and private: the AI runs on your own computer. Install Ollama from ollama.com, then download a model that can use tools, for example run <code>ollama pull qwen3-coder</code> (needs a strong computer) or <code>ollama pull gpt-oss:20b</code>. Press Find to pick one.',
+  openrouter: 'One key for models from many companies. Get a key at openrouter.ai/keys and copy a model name from openrouter.ai/models (one that supports tools).',
+  anthropic: 'A pay-per-use key from console.anthropic.com. Pip uses the model you picked above.',
+  custom: 'Any server that understands Anthropic\'s Messages API (for example LM Studio or LiteLLM). Enter its address, key and model name.',
+};
+const BK_DEFAULT_URL = { ollama: 'http://localhost:11434', openrouter: 'https://openrouter.ai/api' };
+let bkLoaded = false;
+function renderBackup() {
+  const b = settings.backup || {};
+  if (!bkLoaded) {
+    bkLoaded = true;
+    $('bk-provider').value = b.provider || '';
+    $('bk-url').value = b.url || '';
+    $('bk-model').value = b.model || '';
+    $('bk-auto').checked = b.auto !== false;
+  }
+  $('bk-key').placeholder = b.hasKey ? 'API key saved (type to replace)' : 'API key';
+  showBackupFields();
+}
+function showBackupFields() {
+  const prov = $('bk-provider').value;
+  $('bk-fields').hidden = !prov;
+  $('bk-test').hidden = !prov;
+  if (!prov) return;
+  $('bk-help').innerHTML = BK_HELP[prov];
+  $('bk-url').hidden = prov === 'anthropic';
+  $('bk-url').placeholder = BK_DEFAULT_URL[prov] || 'Server address, e.g. http://localhost:1234';
+  $('bk-key').hidden = prov === 'ollama';
+  $('bk-find').hidden = prov !== 'ollama';
+  $('bk-model').placeholder = prov === 'anthropic' ? 'Model (optional, e.g. claude-sonnet-5-5)' : prov === 'ollama' ? 'Model, e.g. qwen3-coder' : 'Model name';
+}
+$('bk-provider').onchange = () => {
+  const b = settings.backup || {};
+  const same = $('bk-provider').value === b.provider; // switching back restores what was saved
+  $('bk-url').value = same ? b.url || '' : '';
+  $('bk-model').value = same ? b.model || '' : '';
+  $('bk-status').textContent = '';
+  showBackupFields();
+};
+$('bk-find').onclick = async () => {
+  $('bk-status').textContent = 'Asking Ollama…';
+  const r = await pip.backupModels($('bk-url').value.trim() || BK_DEFAULT_URL.ollama);
+  if (r.error) { $('bk-status').textContent = r.error; return; }
+  $('bk-models').innerHTML = r.models.map((m) => `<option value="${escapeHtml(m)}">`).join('');
+  $('bk-status').textContent = r.models.length ? `Found ${r.models.length}: ${r.models.join(', ')}` : 'Ollama has no models yet. Run: ollama pull qwen3-coder';
+  if (!$('bk-model').value && r.models[0]) $('bk-model').value = r.models[0];
+};
+$('bk-save').onclick = async () => {
+  const prov = $('bk-provider').value;
+  await pip.backupSave({ provider: prov, url: $('bk-url').value.trim(), model: $('bk-model').value.trim(), key: $('bk-key').value, auto: $('bk-auto').checked });
+  $('bk-key').value = '';
+  $('bk-status').textContent = prov ? 'Saved ✓ Press Test to check it works.' : 'Backup AI turned off.';
+};
+$('bk-test').onclick = async () => {
+  $('bk-status').textContent = 'Testing… (a local model can take a minute the first time)';
+  const r = await pip.backupTest();
+  $('bk-status').textContent = r.error ? `✕ ${r.error}` : `✓ It works! It said: "${r.text.slice(0, 80)}"`;
+};
 // ---------- updates ----------
 const shortDate = (d) => (d ? new Date(d).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 async function renderVersion() {
@@ -407,8 +470,11 @@ const EFFORTS = [
 ];
 const barsHtml = (level) => Array.from({ length: 5 }, (_, i) => `<i class="${i < level ? 'on' : ''}"></i>`).join('');
 
+const modelChoices = () => settings.backup?.provider
+  ? [...MODELS, { id: '__backup', name: 'Backup AI', desc: settings.backup.label || 'Your backup AI', ico: '🧩' }]
+  : MODELS;
 function renderPickers() {
-  const m = MODELS.find((x) => x.id === (settings.model || '')) || { name: settings.model, ico: '✳' };
+  const m = modelChoices().find((x) => x.id === (settings.model || '')) || { name: settings.model, ico: '✳' };
   $('pick-model-text').textContent = m.name;
   $('pick-model').querySelector('.pill-ico').textContent = m.ico;
   const e = EFFORTS.find((x) => x.id === (settings.effort || '')) || EFFORTS[0];
@@ -440,7 +506,7 @@ function toggleMenu(which) {
   closeMenus();
   if (wasOpen) return;
   if (which === 'model') {
-    buildMenu(menu, MODELS, settings.model || '', (it) => it.ico, (id) => { settings.model = id; renderPickers(); pip.updateSettings({ model: id }); });
+    buildMenu(menu, modelChoices(), settings.model || '', (it) => it.ico, (id) => { settings.model = id; renderPickers(); pip.updateSettings({ model: id }); });
   } else {
     buildMenu(menu, EFFORTS, settings.effort || '', (it) => `<span class="bars">${barsHtml(it.level)}</span>`, (id) => { settings.effort = id; renderPickers(); pip.updateSettings({ effort: id }); });
   }
@@ -505,6 +571,9 @@ const resetsIn = (sec) => {
 async function renderUsage() {
   document.querySelectorAll('#usage-range button').forEach((b) => b.classList.toggle('on', b.dataset.r === usageRange));
   const u = await pip.getUsage();
+  const until = settings.limitUntil;
+  $('backup-banner').hidden = !until;
+  if (until) $('backup-banner').textContent = `Your Claude limit is used up, so Pip is using your backup AI (${settings.backup?.label || 'backup'}) until about ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
   const lim = $('limits');
   const windows = Object.entries(u.limits?.unifiedWindows || {});
   if (!windows.length) {

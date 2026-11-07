@@ -195,6 +195,7 @@ function askViaPip(room, client, pip) {
     if (usage) {
       reply.usage = { input: num(usage.input), output: num(usage.output) };
       if (typeof usage.model === 'string' && /^claude-[a-z0-9-]{3,40}$/.test(usage.model)) reply.model = usage.model;
+      if (typeof usage.backup === 'string' && usage.backup) { reply.billing = 'backup'; reply.backupLabel = usage.backup.replace(/[^\w .:/·+-]/g, '').slice(0, 60); }
     }
     pip.runs.delete(reply.id);
     room.busy = null;

@@ -1,7 +1,7 @@
 // Pip: a 3D desktop pet that floats around your screen and does things for you
 // with your own Claude Code subscription.
 
-const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell, clipboard, safeStorage } = require('electron');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -11,6 +11,7 @@ const { spawn } = require('node:child_process');
 const { startControlServer } = require('./lib/control');
 const { RoomLink } = require('./lib/room');
 const { startHosting, stopHosting, currentHost } = require('./lib/host');
+const backup = require('./lib/backup');
 
 const SKINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets', 'skins.json'), 'utf8'));
 const SLOTS = ['body', 'belly', 'eye', 'highlight', 'cheek', 'bulb', 'accent'];
@@ -21,7 +22,10 @@ const WIN_H = 600;
 
 // ---------- settings ----------
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-let settings = { skin: SKINS.default, wander: true, computerAccess: null, room: null, model: '', effort: '', name: '', pairCode: '', recentRooms: [] };
+let settings = {
+  skin: SKINS.default, wander: true, computerAccess: null, room: null, model: '', effort: '', name: '', pairCode: '', recentRooms: [],
+  backup: { provider: '', url: '', model: '', auto: true, keyEnc: '' }, // backup AI for when the Claude limit runs out
+};
 function loadSettings() {
   try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) }; } catch {}
   if (!/^[A-Z0-9]{6,8}$/.test(settings.pairCode)) {
@@ -34,7 +38,62 @@ function saveSettings() {
   fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
   send('pet:settings', publicSettings());
 }
-const publicSettings = () => ({ ...settings, skins: allSkins(), workspace: workspace(), hosting: hostInfo() });
+const publicSettings = () => {
+  const { keyEnc, ...bk } = settings.backup || {};
+  return {
+    ...settings, skins: allSkins(), workspace: workspace(), hosting: hostInfo(),
+    backup: { ...bk, hasKey: !!keyEnc, label: backup.backupLabel(bk) },
+    limitUntil: limitState.limitUntil && limitState.limitUntil > Date.now() ? limitState.limitUntil : null,
+  };
+};
+
+// ---------- backup AI ----------
+const limitState = { limitUntil: 0 }; // while the Claude limit is used up, go straight to the backup
+const encryptKey = (key) => (safeStorage.isEncryptionAvailable() ? 'enc:' + safeStorage.encryptString(key).toString('base64') : 'raw:' + Buffer.from(key).toString('base64'));
+function decryptKey(v) {
+  if (!v) return '';
+  try {
+    if (v.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(v.slice(4), 'base64'));
+    if (v.startsWith('raw:')) return Buffer.from(v.slice(4), 'base64').toString();
+  } catch {}
+  return '';
+}
+function getBackup() {
+  const b = settings.backup;
+  if (!b?.provider || !backup.PROVIDERS[b.provider]) return null;
+  const key = decryptKey(b.keyEnc);
+  if (backup.PROVIDERS[b.provider].needsKey && !key) return null;
+  return { cfg: b, key, auto: b.auto !== false };
+}
+const smart = (opts, force) => backup.runSmart(opts, { getBackup, state: limitState, forceBackup: force });
+
+ipcMain.handle('backup:save', (_e, b) => {
+  const cur = settings.backup || {};
+  const provider = backup.PROVIDERS[b.provider] ? b.provider : '';
+  settings.backup = {
+    provider,
+    url: String(b.url || '').trim().slice(0, 300),
+    model: String(b.model || '').trim().slice(0, 120),
+    auto: b.auto !== false,
+    keyEnc: b.clearKey ? '' : b.key ? encryptKey(String(b.key).trim()) : provider === cur.provider ? cur.keyEnc : '',
+  };
+  if (!provider && settings.model === '__backup') settings.model = '';
+  saveSettings();
+  return { ok: true };
+});
+ipcMain.handle('backup:models', async (_e, url) => {
+  try { return { models: await backup.ollamaModels(url) }; }
+  catch (err) { return { error: `Couldn't reach Ollama (${err.message}). Is it installed and running?` }; }
+});
+ipcMain.handle('backup:test', () => new Promise((resolve) => {
+  if (!getBackup()) return resolve({ error: 'Fill in the backup AI first (and its API key if it needs one), then Save.' });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pip-test-'));
+  let text = '';
+  const t = smart({ prompt: 'Reply with exactly: Backup AI works!', cwd: dir, tools: '', noPersist: true }, true);
+  t.on('text', (d) => { text += d; });
+  t.on('done', (r) => resolve(r.error ? { error: r.error } : { ok: true, text: text.trim() || r.text }));
+  setTimeout(() => { t.stop(); resolve({ error: 'The backup AI took too long to answer.' }); }, 120000);
+}));
 
 // ---------- saved chats (so you can continue them later) ----------
 const chatsPath = () => path.join(app.getPath('userData'), 'chats.json');
@@ -231,7 +290,29 @@ function createWindow() {
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true }); // clicks pass through empty space
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Closing Pip (Alt+F4, etc.) just hides it; it keeps running in the tray.
+  win.on('close', (e) => {
+    if (quitting) return;
+    e.preventDefault();
+    hidePip();
+  });
 }
+
+let quitting = false;
+let toldAboutTray = false;
+function hidePip() {
+  win?.hide();
+  buildTray();
+  if (!toldAboutTray && tray && process.platform === 'win32') {
+    toldAboutTray = true;
+    tray.displayBalloon({ title: 'Pip is still here', content: 'Pip keeps running in the tray. Click the icon to bring it back, or right-click → Quit Pip to close it.' });
+  }
+}
+function showPip() {
+  win?.show();
+  buildTray();
+}
+ipcMain.on('pet:hide', () => hidePip());
 
 // ---------- wandering ----------
 let busy = false;          // Claude is working on something
@@ -322,12 +403,13 @@ ipcMain.handle('pet:ask', async (_e, text) => {
   cancelled = false;
   busy = true;
   send('pet:state', 'thinking');
-  const turn = runClaude({
+  const forceBackup = settings.model === '__backup';
+  const turn = smart({
     prompt: text,
     systemPrompt: systemPrompt(),
     cwd: workspace(),
     sessionId,
-    model: settings.model || undefined,
+    model: forceBackup ? undefined : settings.model || undefined,
     effort: settings.effort || undefined,
     tools: access ? 'Read,Write,Edit,Glob,Grep,Bash' : '',
     mcpConfigPath: access ? mcpConfigPath : mcpSkinsConfigPath,
@@ -335,8 +417,12 @@ ipcMain.handle('pet:ask', async (_e, text) => {
       ...(access ? ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', ...COMPUTER_TOOLS.map((t) => `mcp__pip__${t}`)] : []),
       ...SKIN_TOOLS.map((t) => `mcp__pip__${t}`),
     ],
-  });
+  }, forceBackup);
   current = turn;
+  turn.on('switch', ({ label }) => {
+    send('pet:tool', forceBackup ? `🧩 Using backup AI: ${label}` : `🔁 Claude limit reached, switching to backup AI: ${label}`);
+    send('pet:settings', publicSettings());
+  });
   turn.on('session', (id) => { sessionId = id; chat.sessionId = id; });
   turn.on('limits', recordLimits);
   turn.on('text', (t) => { send('pet:state', 'talking'); send('pet:text', t); });
@@ -349,6 +435,7 @@ ipcMain.handle('pet:ask', async (_e, text) => {
     busy = false;
     if (r.sessionId) { sessionId = r.sessionId; chat.sessionId = r.sessionId; }
     if (r.text) chat.messages.push({ role: 'pip', text: r.text });
+    if (r.backup) chat.backup = r.backup;
     if (r.error) chat.messages.push({ role: 'err', text: r.error });
     if (r.usage) {
       chat.usage.input += r.usage.input;
@@ -443,6 +530,7 @@ function connectRoom() {
     activity: (state) => { if (!current) send('pet:state', state); },
     limits: recordLimits,
     usage: (u) => recordUsage('room', u),
+    run: (opts) => smart(opts, settings.model === '__backup'),
   });
 }
 
@@ -607,9 +695,13 @@ function buildTray() {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'previews', `${SKINS.default}.png`)).resize({ width: 20, height: 20 });
     tray = new Tray(icon);
     tray.setToolTip('Pip');
+    // Click the tray icon to show or hide Pip (Windows/Linux; on macOS it opens the menu).
+    tray.on('click', () => { if (win?.isVisible()) hidePip(); else { showPip(); send('pet:open-chat'); } });
   }
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show Pip', click: () => { win.show(); send('pet:open-chat'); } },
+    win?.isVisible()
+      ? { label: 'Hide Pip', click: () => hidePip() }
+      : { label: 'Show Pip', click: () => { showPip(); send('pet:open-chat'); } },
     { label: 'Skin', submenu: Object.entries(allSkins().skins).map(([id, s]) => ({ label: s.label, type: 'radio', checked: settings.skin === id, click: () => { settings.skin = id; saveSettings(); } })) },
     { label: 'Float around', type: 'checkbox', checked: settings.wander, click: (i) => { settings.wander = i.checked; saveSettings(); } },
     { label: 'Computer access', type: 'checkbox', checked: settings.computerAccess === 'granted', click: (i) => { settings.computerAccess = i.checked ? 'granted' : 'denied'; saveSettings(); } },
@@ -665,5 +757,5 @@ app.whenReady().then(async () => {
   }, 15000);
 });
 
-app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { stopHosting().catch(() => {}); });
+app.on('window-all-closed', () => {}); // stay in the tray
+app.on('before-quit', () => { quitting = true; stopHosting().catch(() => {}); });
