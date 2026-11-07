@@ -1,7 +1,8 @@
 // Pip: a 3D desktop pet that floats around your screen and does things for you
 // with your own Claude Code subscription.
 
-const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, dialog, Tray, Menu, nativeImage, shell, clipboard } = require('electron');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -9,26 +10,101 @@ const { runClaude, findClaude } = require('./lib/claude');
 const { spawn } = require('node:child_process');
 const { startControlServer } = require('./lib/control');
 const { RoomLink } = require('./lib/room');
+const { startHosting, stopHosting, currentHost } = require('./lib/host');
 
 const SKINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'assets', 'skins.json'), 'utf8'));
 const SLOTS = ['body', 'belly', 'eye', 'highlight', 'cheek', 'bulb', 'accent'];
 const PARTS = ['stem', 'bulb', 'leaf', 'crown', 'headphones', 'beanie'];
 const SHAPES = ['sphere', 'box', 'cylinder', 'cone', 'torus', 'capsule'];
 const WIN_W = 380;
-const WIN_H = 560;
+const WIN_H = 600;
 
 // ---------- settings ----------
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
-let settings = { skin: SKINS.default, wander: true, computerAccess: null, room: null, model: '' };
+let settings = { skin: SKINS.default, wander: true, computerAccess: null, room: null, model: '', effort: '', name: '', pairCode: '', recentRooms: [] };
 function loadSettings() {
   try { settings = { ...settings, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) }; } catch {}
+  if (!/^[A-Z0-9]{6,8}$/.test(settings.pairCode)) {
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    settings.pairCode = Array.from(crypto.randomBytes(6), (b) => abc[b % abc.length]).join('');
+  }
 }
 function saveSettings() {
   fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
   fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2));
   send('pet:settings', publicSettings());
 }
-const publicSettings = () => ({ ...settings, skins: allSkins(), workspace: workspace() });
+const publicSettings = () => ({ ...settings, skins: allSkins(), workspace: workspace(), hosting: hostInfo() });
+
+// ---------- saved chats (so you can continue them later) ----------
+const chatsPath = () => path.join(app.getPath('userData'), 'chats.json');
+let chats = [];        // newest first: { id, sessionId, title, created, updated, messages:[{role,text}], usage:{input,output}, model }
+let currentChat = null;
+function loadChats() { try { chats = JSON.parse(fs.readFileSync(chatsPath(), 'utf8')).chats || []; } catch {} }
+function saveChats() {
+  chats = chats.slice(0, 200);
+  fs.writeFileSync(chatsPath(), JSON.stringify({ chats }));
+  send('chats:changed');
+}
+const chatList = () => chats.map(({ id, title, updated, messages, usage }) => ({ id, title, updated, count: messages.length, tokens: (usage?.input || 0) + (usage?.output || 0), current: id === currentChat?.id }));
+
+// ---------- usage log (for the usage viewer) ----------
+const usagePath = () => path.join(app.getPath('userData'), 'usage.json');
+let usage = { limits: null, limitsAt: 0, events: [] };
+let usageTimer = null;
+function loadUsage() { try { usage = { ...usage, ...JSON.parse(fs.readFileSync(usagePath(), 'utf8')) }; } catch {} }
+function saveUsageSoon() {
+  clearTimeout(usageTimer);
+  usageTimer = setTimeout(() => fs.writeFile(usagePath(), JSON.stringify(usage), () => {}), 400);
+  send('usage:changed');
+}
+function recordUsage(source, u) {
+  if (!u) return;
+  for (const [model, m] of Object.entries(u.byModel || {})) {
+    usage.events.push({ ts: Date.now(), source, model, input: m.input, output: m.output, costUsd: m.costUsd || 0 });
+  }
+  if (!Object.keys(u.byModel || {}).length) usage.events.push({ ts: Date.now(), source, model: u.model || 'unknown', input: u.input || 0, output: u.output || 0, costUsd: u.costUsd || 0 });
+  usage.events = usage.events.slice(-5000);
+  saveUsageSoon();
+}
+function recordLimits(info) {
+  usage.limits = info;
+  usage.limitsAt = Date.now();
+  saveUsageSoon();
+}
+function usageSummary() {
+  const now = Date.now();
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const ranges = { today: startOfDay.getTime(), week: now - 7 * 864e5, month: now - 30 * 864e5 };
+  const out = {};
+  for (const [k, since] of Object.entries(ranges)) {
+    const ev = usage.events.filter((e) => e.ts >= since);
+    const byModel = {};
+    const bySource = {};
+    for (const e of ev) {
+      const m = (byModel[e.model] ||= { requests: 0, input: 0, output: 0 });
+      m.requests++; m.input += e.input; m.output += e.output;
+      const s = (bySource[e.source] ||= { requests: 0, input: 0, output: 0 });
+      s.requests++; s.input += e.input; s.output += e.output;
+    }
+    out[k] = {
+      requests: ev.length,
+      input: ev.reduce((n, e) => n + e.input, 0),
+      output: ev.reduce((n, e) => n + e.output, 0),
+      apiValueUsd: ev.reduce((n, e) => n + (e.costUsd || 0), 0),
+      byModel, bySource,
+    };
+  }
+  // Per-day totals for the last 14 days (for the little chart)
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(startOfDay.getTime() - i * 864e5);
+    const end = d.getTime() + 864e5;
+    const ev = usage.events.filter((e) => e.ts >= d.getTime() && e.ts < end);
+    days.push({ day: d.toISOString().slice(0, 10), tokens: ev.reduce((n, e) => n + e.input + e.output, 0), requests: ev.length });
+  }
+  return { limits: usage.limits, limitsAt: usage.limitsAt, ...out, days };
+}
 
 // ---------- custom skins Pip designs itself ----------
 const customPath = () => path.join(app.getPath('userData'), 'custom-skins.json');
@@ -233,6 +309,15 @@ const ACTION_LABELS = {
 ipcMain.handle('pet:ask', async (_e, text) => {
   if (current) return { error: 'I\'m still working on the last thing! Press Stop if you want me to switch.' };
   await askPermissionOnce();
+  if (!currentChat) {
+    currentChat = { id: crypto.randomUUID(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 60), created: Date.now(), updated: Date.now(), messages: [], usage: { input: 0, output: 0 } };
+    chats.unshift(currentChat);
+  }
+  const chat = currentChat;
+  chat.messages.push({ role: 'me', text });
+  chat.updated = Date.now();
+  chats = [chat, ...chats.filter((c) => c !== chat)];
+  saveChats();
   const access = settings.computerAccess === 'granted';
   cancelled = false;
   busy = true;
@@ -243,6 +328,7 @@ ipcMain.handle('pet:ask', async (_e, text) => {
     cwd: workspace(),
     sessionId,
     model: settings.model || undefined,
+    effort: settings.effort || undefined,
     tools: access ? 'Read,Write,Edit,Glob,Grep,Bash' : '',
     mcpConfigPath: access ? mcpConfigPath : mcpSkinsConfigPath,
     allowedTools: [
@@ -251,7 +337,8 @@ ipcMain.handle('pet:ask', async (_e, text) => {
     ],
   });
   current = turn;
-  turn.on('session', (id) => { sessionId = id; });
+  turn.on('session', (id) => { sessionId = id; chat.sessionId = id; });
+  turn.on('limits', recordLimits);
   turn.on('text', (t) => { send('pet:state', 'talking'); send('pet:text', t); });
   turn.on('tool', ({ name }) => {
     send('pet:state', 'working');
@@ -260,7 +347,17 @@ ipcMain.handle('pet:ask', async (_e, text) => {
   turn.on('done', (r) => {
     current = null;
     busy = false;
-    if (r.sessionId) sessionId = r.sessionId;
+    if (r.sessionId) { sessionId = r.sessionId; chat.sessionId = r.sessionId; }
+    if (r.text) chat.messages.push({ role: 'pip', text: r.text });
+    if (r.error) chat.messages.push({ role: 'err', text: r.error });
+    if (r.usage) {
+      chat.usage.input += r.usage.input;
+      chat.usage.output += r.usage.output;
+      chat.model = r.usage.model || chat.model;
+      recordUsage('chat', r.usage);
+    }
+    chat.updated = Date.now();
+    saveChats();
     send('pet:done', { error: r.error || null });
     send('pet:state', r.error ? 'sad' : 'happy');
   });
@@ -268,7 +365,27 @@ ipcMain.handle('pet:ask', async (_e, text) => {
 });
 
 ipcMain.on('pet:stop', () => { cancelled = true; current?.stop(); });
-ipcMain.on('pet:new-chat', () => { sessionId = null; });
+ipcMain.on('pet:new-chat', () => { sessionId = null; currentChat = null; send('chats:changed'); });
+
+// ---------- chat history ----------
+ipcMain.handle('chats:list', () => chatList());
+ipcMain.handle('chats:open', (_e, id) => {
+  if (current) return { error: 'Wait until I finish, or press Stop.' };
+  const chat = chats.find((c) => c.id === id);
+  if (!chat) return { error: 'That chat is gone.' };
+  currentChat = chat;
+  sessionId = chat.sessionId;
+  send('chats:changed');
+  return { messages: chat.messages, title: chat.title };
+});
+ipcMain.on('chats:delete', (_e, id) => {
+  chats = chats.filter((c) => c.id !== id);
+  if (currentChat?.id === id) { currentChat = null; sessionId = null; }
+  saveChats();
+});
+
+// ---------- usage ----------
+ipcMain.handle('usage:get', () => usageSummary());
 
 // ---------- other renderer requests ----------
 ipcMain.on('pet:ignore-mouse', (_e, ignore) => win?.setIgnoreMouseEvents(ignore, { forward: true }));
@@ -280,8 +397,8 @@ ipcMain.on('pet:drag', (_e, { phase, dx, dy }) => {
 ipcMain.on('pet:chat-open', (_e, open) => { chatOpen = open; });
 ipcMain.handle('pet:get-settings', () => publicSettings());
 ipcMain.on('pet:update-settings', (_e, patch) => {
-  const allowed = ['skin', 'wander', 'computerAccess', 'model'];
-  for (const k of allowed) if (k in patch) settings[k] = patch[k];
+  const allowed = ['skin', 'wander', 'computerAccess', 'model', 'effort', 'name'];
+  for (const k of allowed) if (k in patch) settings[k] = typeof patch[k] === 'string' ? patch[k].slice(0, 60) : patch[k];
   if (!allSkins().skins[settings.skin]) settings.skin = SKINS.default;
   saveSettings();
   buildTray();
@@ -324,8 +441,109 @@ function connectRoom() {
   room = new RoomLink(settings.room.link, settings.room.code, {
     status: (s) => send('room:status', s),
     activity: (state) => { if (!current) send('pet:state', state); },
+    limits: recordLimits,
+    usage: (u) => recordUsage('room', u),
   });
 }
+
+// ---------- one-click rooms: host one, or join with an invite link ----------
+let roomWin = null;
+const hostInfo = () => {
+  const h = currentHost();
+  return h ? { publicUrl: h.publicUrl, lanUrl: h.lanUrl, localUrl: h.localUrl } : null;
+};
+
+function parseRoomLink(link) {
+  try {
+    const u = new URL(String(link).trim());
+    const m = u.pathname.match(/\/r\/([a-z0-9-]{4,40})/);
+    if (!/^https?:$/.test(u.protocol) || !m) return null;
+    return { base: u.origin, id: m[1] };
+  } catch { return null; }
+}
+
+function rememberRoom(entry) {
+  settings.recentRooms = [entry, ...(settings.recentRooms || []).filter((r) => r.id !== entry.id)].slice(0, 10);
+  saveSettings();
+}
+
+// Opens the room in its own window, already joined as you and paired with this Pip,
+// so "Ask Claude" uses your own Claude Code and subscription.
+function openRoom(base, id, roomName) {
+  const link = `${base}/r/${id}`;
+  settings.room = { link, code: settings.pairCode };
+  saveSettings();
+  connectRoom();
+  const hash = new URLSearchParams({ name: settings.name || 'Me', pair: settings.pairCode, billing: 'pip' });
+  if (settings.model) hash.set('model', settings.model);
+  if (settings.effort && settings.effort !== 'default') hash.set('effort', settings.effort);
+  if (roomName) hash.set('roomName', roomName);
+  if (!roomWin || roomWin.isDestroyed()) {
+    roomWin = new BrowserWindow({
+      width: 1040, height: 760, title: 'Claude Room', autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, partition: 'persist:rooms' },
+    });
+    roomWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+    roomWin.on('closed', () => {
+      roomWin = null;
+      room?.close();
+      room = null;
+      settings.room = null;
+      saveSettings();
+      send('room:status', { state: 'off' });
+    });
+  }
+  roomWin.loadURL(`${link}#${hash}`);
+  roomWin.show();
+  roomWin.focus();
+}
+
+ipcMain.handle('room:host', async (_e, { name, id }) => {
+  if (!settings.name) return { error: 'Set your name first.' };
+  try {
+    const h = await startHosting({
+      dataDir: path.join(app.getPath('userData'), 'rooms'),
+      onStatus: (text) => send('room:status', { state: 'connecting', text }),
+    });
+    const roomName = String(name || 'Our room').slice(0, 80);
+    const slug = roomName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 20);
+    const roomId = /^[a-z0-9-]{4,40}$/.test(id || '') ? id : `${slug ? slug + '-' : ''}${crypto.randomBytes(5).toString('hex')}`;
+    const invite = `${h.publicUrl || h.lanUrl || h.localUrl}/r/${roomId}`;
+    openRoom(h.localUrl, roomId, roomName);
+    rememberRoom({ id: roomId, name: roomName, link: invite, hosted: true, ts: Date.now() });
+    return {
+      invite, roomId, public: !!h.publicUrl,
+      note: h.publicUrl ? null : 'Could not make a public link, so only people on the same Wi-Fi can join with this link.',
+    };
+  } catch (err) {
+    return { error: `Could not host: ${err.message}` };
+  }
+});
+
+ipcMain.handle('room:join', (_e, link) => {
+  if (!settings.name) return { error: 'Set your name first.' };
+  const r = parseRoomLink(link);
+  if (!r) return { error: 'That doesn\'t look like a room invite link (it should contain /r/).' };
+  const h = currentHost();
+  // Our own hosted room: talk to it directly on this computer.
+  const mine = h && [h.publicUrl, h.lanUrl, h.localUrl].includes(r.base);
+  openRoom(mine ? h.localUrl : r.base, r.id);
+  const prev = (settings.recentRooms || []).find((x) => x.id === r.id);
+  rememberRoom({ id: r.id, name: prev?.name || r.id, link: `${r.base}/r/${r.id}`, hosted: !!prev?.hosted, ts: Date.now() });
+  return { ok: true };
+});
+
+ipcMain.handle('room:stop-hosting', async () => {
+  await stopHosting();
+  if (roomWin && !roomWin.isDestroyed()) roomWin.close();
+  send('pet:settings', publicSettings());
+  return { ok: true };
+});
+ipcMain.on('room:forget', (_e, id) => {
+  settings.recentRooms = (settings.recentRooms || []).filter((r) => r.id !== id);
+  saveSettings();
+});
+ipcMain.on('pet:copy', (_e, text) => clipboard.writeText(String(text)));
 
 // ---------- tray ----------
 function buildTray() {
@@ -352,6 +570,8 @@ if (!app.requestSingleInstanceLock()) app.quit();
 app.whenReady().then(async () => {
   loadSettings();
   loadCustom();
+  loadChats();
+  loadUsage();
   if (process.platform === 'darwin') app.dock?.hide();
   control = await startControlServer({
     allowed: () => settings.computerAccess === 'granted',
@@ -378,8 +598,9 @@ app.whenReady().then(async () => {
   mcpSkinsConfigPath = writeMcp('mcp-skins.json', 'skins');
   createWindow();
   buildTray();
-  connectRoom();
+  settings.room = null; // rooms reopen from the Rooms list
   setInterval(wanderTick, 9000);
 });
 
 app.on('window-all-closed', () => app.quit());
+app.on('before-quit', () => { stopHosting().catch(() => {}); });

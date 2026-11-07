@@ -8,23 +8,22 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from 'ws';
 import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const DATA_DIR = path.join(__dirname, 'data');
-fs.mkdirSync(DATA_DIR, { recursive: true });
+let DATA_DIR = path.join(__dirname, 'data'); // startRoomServer() can point this elsewhere
 
 const MODELS = {
   'claude-opus-5-5': { label: 'Opus 5.5', fallbacks: true },
   'claude-sonnet-5-5': { label: 'Sonnet 5.5', fallbacks: true },
   'claude-haiku-5-5': { label: 'Haiku 5.5', fallbacks: false },
+  'claude-fable-5-1': { label: 'Fable 5.1', fallbacks: true },
 };
 const DEFAULT_MODEL = 'claude-opus-5-5';
-const EFFORTS = ['low', 'medium', 'high'];
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const MAX_CONTEXT_CHARS = 600_000; // roughly 150k tokens of chat history sent to Claude
 const MAX_MESSAGE_CHARS = 20_000;
 
@@ -186,13 +185,17 @@ function transcriptPrompt(room, asker) {
 function askViaPip(room, client, pip) {
   const reply = addMessage(room, {
     id: crypto.randomUUID(), type: 'claude', author: 'Claude', text: '', ts: Date.now(),
-    via: client.name, model: 'claude-code', streaming: true,
+    via: client.name, model: client.model, billing: 'pip', streaming: true,
   });
-  const finish = (error) => {
+  const finish = (error, usage) => {
     if (!reply.streaming) return;
     clearTimeout(timer);
     reply.streaming = false;
     if (error) reply.error = error;
+    if (usage) {
+      reply.usage = { input: num(usage.input), output: num(usage.output) };
+      if (typeof usage.model === 'string' && /^claude-[a-z0-9-]{3,40}$/.test(usage.model)) reply.model = usage.model;
+    }
     pip.runs.delete(reply.id);
     room.busy = null;
     broadcast(room, { t: 'done', msg: reply });
@@ -204,8 +207,13 @@ function askViaPip(room, client, pip) {
     finish,
   });
   room.busy = { replyId: reply.id, by: client.name, abort: { abort: () => { pip.send({ t: 'stop', id: reply.id }); finish('Stopped.'); } } };
-  pip.send({ t: 'run', id: reply.id, system: systemPrompt(room, client.name), prompt: transcriptPrompt(room, client.name) });
+  pip.send({
+    t: 'run', id: reply.id, system: systemPrompt(room, client.name), prompt: transcriptPrompt(room, client.name),
+    model: client.model, effort: client.effort,
+  });
 }
+
+const num = (v) => (Number.isFinite(v) && v >= 0 ? Math.round(v) : 0);
 
 function handleCompanion(ws, m) {
   const send = (payload) => ws.readyState === 1 && ws.send(JSON.stringify(payload));
@@ -213,7 +221,8 @@ function handleCompanion(ws, m) {
   const room = validRoomId(m.room) && rooms.get(m.room);
   const owner = room && [...room.clients].find((c) => c.pairCode && c.pairCode === code);
   if (!room || !owner) {
-    send({ t: 'companion-error', text: 'Pairing code not found. Open the room in your browser first, then copy the code from Settings.' });
+    // Usually Pip is just quicker than the room window; it will try again.
+    send({ t: 'companion-error', retry: true, text: 'Waiting for you to join the room…' });
     return ws.close();
   }
   const pip = { ws, send, runs: new Map() };
@@ -228,7 +237,7 @@ function handleCompanion(ws, m) {
     const run = pip.runs.get(msg.id);
     if (!run) return;
     if (msg.t === 'c-delta') run.delta(String(msg.text || ''));
-    if (msg.t === 'c-done') run.finish(msg.error ? String(msg.error).slice(0, 500) : null);
+    if (msg.t === 'c-done') run.finish(msg.error ? String(msg.error).slice(0, 500) : null, msg.usage && typeof msg.usage === 'object' ? msg.usage : null);
   });
   ws.on('close', () => {
     for (const run of pip.runs.values()) run.finish('Pip disconnected.');
@@ -330,7 +339,7 @@ function handleConnection(ws) {
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
-const server = http.createServer((req, res) => {
+function handleHttp(req, res) {
   const url = new URL(req.url, 'http://x');
   let file = url.pathname === '/' || url.pathname.startsWith('/r/') ? '/index.html' : url.pathname;
   const full = path.join(PUBLIC_DIR, path.normalize(file));
@@ -340,8 +349,29 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(full)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
-});
+}
 
-new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 }).on('connection', handleConnection);
+/**
+ * Start a room server. Pip calls this to host rooms with one click.
+ * opts: { port (0 = any free port), dataDir, host }
+ * Resolves to { port, close() }.
+ */
+export function startRoomServer(opts = {}) {
+  if (opts.dataDir) DATA_DIR = opts.dataDir;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const server = http.createServer(handleHttp);
+  new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 }).on('connection', handleConnection);
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(opts.port ?? 3000, opts.host, () => resolve({
+      port: server.address().port,
+      close: () => new Promise((r) => { for (const room of rooms.values()) for (const c of room.clients) c.ws.terminate(); server.close(() => r()); }),
+    }));
+  });
+}
 
-server.listen(PORT, () => console.log(`Claude Room running at http://localhost:${PORT}`));
+// Run directly: `npm start` / `node server.js`
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  const { port } = await startRoomServer({ port: Number(process.env.PORT) || 3000 });
+  console.log(`Claude Room running at http://localhost:${port}`);
+}

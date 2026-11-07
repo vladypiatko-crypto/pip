@@ -32,6 +32,10 @@
 
         <button type="submit" class="primary" id="setup-submit">Create room</button>
       </form>
+      <div id="recent" class="recent" hidden>
+        <h4>Continue a recent room</h4>
+        <ul id="recent-list"></ul>
+      </div>
     </div>
   </main>
 
@@ -44,6 +48,7 @@
       </div>
       <div class="actions">
         <button id="invite" class="ghost">Invite</button>
+        <button id="open-usage" class="ghost">Usage</button>
         <button id="open-settings" class="ghost">Settings</button>
         <button id="toggle-people" class="ghost people-btn">People <span id="people-count">0</span></button>
       </div>
@@ -72,6 +77,15 @@
   </div>
 
   <!-- Settings -->
+  <dialog id="usage">
+    <form method="dialog">
+      <h3>Room usage</h3>
+      <p class="hint">Who asked Claude in this room, and how much each person's answers used. Everyone pays for their own questions.</p>
+      <div class="table-wrap"><table id="usage-table"></table></div>
+      <div class="row"><button value="close" class="primary">Close</button></div>
+    </form>
+  </dialog>
+
   <dialog id="settings">
     <form method="dialog" id="settings-form">
       <h3>Your settings</h3>
@@ -84,19 +98,21 @@
           <option value="pip">My Claude subscription (Pip desktop pet)</option>
         </select>
       </label>
+      <label>Model for your questions
+        <select id="s-model"></select>
+      </label>
+      <label>Effort
+        <select id="s-effort">
+          <option value="low">Low: fastest, uses the least</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="xhigh">Extra high</option>
+          <option value="max">Max: most thorough, uses the most</option>
+        </select>
+      </label>
       <div id="billing-api">
         <label>Anthropic API key
           <input id="s-key" type="password" autocomplete="off" placeholder="sk-ant-...">
-        </label>
-        <label>Model for your questions
-          <select id="s-model"></select>
-        </label>
-        <label>Effort
-          <select id="s-effort">
-            <option value="low">Low: fastest, cheapest</option>
-            <option value="medium">Medium</option>
-            <option value="high">High: most thorough</option>
-          </select>
         </label>
         <p class="hint">Your key is saved in this browser only.</p>
       </div>

@@ -4,7 +4,7 @@ const listeners = {};
 const emit = (ch, v) => (listeners[ch] || []).forEach((f) => f(v));
 const on = (ch) => (fn) => { (listeners[ch] ||= []).push(fn); };
 const skins = await (await fetch('../assets/skins.json')).json();
-const settings = { skin: new URLSearchParams(location.search).get('skin') || skins.default, wander: true, computerAccess: 'granted', room: null, skins };
+const settings = { skin: new URLSearchParams(location.search).get('skin') || skins.default, wander: true, computerAccess: 'granted', room: null, skins, name: 'Vlad', model: '', effort: '', recentRooms: [{ id: 'game-jam-3fa9c2', name: 'Game jam', hosted: true, ts: Date.now() - 7200e3 }, { id: 'x', name: "Sam's study room", link: 'https://x/r/x', ts: Date.now() - 86400e3 }] };
 
 export default {
   async getSettings() { return { ...settings }; },
@@ -26,6 +26,21 @@ export default {
   },
   skinPreview() {},
   deleteSkin() {},
+  copy() {},
+  async listChats() { return [{ id: 'a', title: 'Help me build a game', updated: Date.now() - 3600e3, count: 6 }, { id: 'b', title: 'Design yourself a pirate skin', updated: Date.now() - 86400e3 * 2, count: 2 }]; },
+  async openChat() { return { messages: [{ role: 'me', text: 'Help me build a game' }, { role: 'pip', text: 'Done! I made **Star Hopper** in your Pip Projects folder.' }] }; },
+  deleteChat() {},
+  async getUsage() {
+    const days = Array.from({ length: 14 }, (_, i) => ({ day: `d${i}`, tokens: Math.round(20000 + Math.random() * 90000), requests: 5 }));
+    const r = { requests: 12, input: 184200, output: 9400, apiValueUsd: 1.37, byModel: { 'claude-opus-5-5': { requests: 9, input: 150000, output: 8000 }, 'claude-sonnet-5-5': { requests: 3, input: 34200, output: 1400 } }, bySource: { chat: { requests: 10, input: 170000, output: 8000 }, room: { requests: 2, input: 14200, output: 1400 } } };
+    return { limits: { status: 'allowed', unifiedWindows: { five_hour: { utilization: 0.37, resetsAt: Date.now() / 1000 + 7200 }, seven_day: { utilization: 0.72, resetsAt: Date.now() / 1000 + 300000 } } }, limitsAt: Date.now() - 60000, today: r, week: r, month: r, days };
+  },
+  async hostRoom() { return { invite: 'https://lucky-otter-demo.trycloudflare.com/r/game-jam-3fa9c2', public: true }; },
+  async joinRoom() { return { ok: true }; },
+  async stopHosting() { return { ok: true }; },
+  forgetRoom() {},
+  onChatsChanged: on('chats:changed'),
+  onUsageChanged: on('usage:changed'),
   stop() { emit('pet:done', { error: 'Stopped.' }); },
   newChat() {},
   ignoreMouse() {},

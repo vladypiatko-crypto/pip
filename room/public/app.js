@@ -18,6 +18,26 @@
   const match = location.pathname.match(/^\/r\/([a-z0-9-]{4,40})/);
   state.roomId = match ? match[1] : '';
 
+  // Pip opens rooms with #name=…&pair=…&billing=pip so you're joined and paired automatically.
+  const hash = new URLSearchParams(location.hash.slice(1));
+  let autoJoin = false;
+  if (state.roomId && hash.get('name')) {
+    store.set('name', hash.get('name').slice(0, 40));
+    if (/^[A-Z0-9]{6,8}$/.test(hash.get('pair') || '')) store.set('pairCode', hash.get('pair'));
+    if (hash.get('billing') === 'pip' || hash.get('billing') === 'api') store.set('billing', hash.get('billing'));
+    for (const k of ['model', 'effort']) if (hash.get(k)) store.set(k, hash.get(k));
+    state.newRoomName = hash.get('roomName') || '';
+    autoJoin = true;
+    history.replaceState(null, '', location.pathname);
+  }
+
+  function rememberRoom(room) {
+    let list = [];
+    try { list = JSON.parse(store.get('recent', '[]')); } catch {}
+    list = [{ id: room.id, name: room.name, ts: Date.now() }, ...list.filter((r) => r.id !== room.id)].slice(0, 8);
+    store.set('recent', JSON.stringify(list));
+  }
+
   function showSetup() {
     $('setup').hidden = false;
     $('f-name').value = store.get('name');
@@ -27,6 +47,22 @@
       $('joining').hidden = false;
       $('joining-id').textContent = state.roomId;
       $('setup-submit').textContent = 'Join room';
+    }
+    let recent = [];
+    try { recent = JSON.parse(store.get('recent', '[]')); } catch {}
+    recent = recent.filter((r) => r.id !== state.roomId);
+    $('recent').hidden = !recent.length;
+    $('recent-list').innerHTML = '';
+    for (const r of recent) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = '/r/' + r.id;
+      a.textContent = r.name;
+      const when = document.createElement('span');
+      when.textContent = new Date(r.ts).toLocaleDateString();
+      a.append(when);
+      li.append(a);
+      $('recent-list').append(li);
     }
     ($('f-name').value ? $('f-key') : $('f-name')).focus();
   }
@@ -114,6 +150,7 @@
 
   // ---------- rendering ----------
   function setRoom(room) {
+    if (room.name) rememberRoom(room);
     $('room-name').textContent = room.name;
     document.title = `${room.name} · Claude Room`;
   }
@@ -197,10 +234,12 @@
     err.hidden = !msg.error;
     err.textContent = msg.error || '';
     const foot = el.querySelector('.footer');
-    if (msg.type === 'claude' && !msg.streaming && (msg.usage || (msg.model === 'claude-code' && !msg.error))) {
-      const model = msg.model === 'claude-code' ? 'Claude Code via Pip' : state.models[msg.model]?.label || msg.model;
+    const viaPip = msg.billing === 'pip' || msg.model === 'claude-code';
+    if (msg.type === 'claude' && !msg.streaming && (msg.usage || (viaPip && !msg.error))) {
+      const name = msg.model === 'claude-code' ? 'Claude Code' : state.models[msg.model]?.label || msg.model;
+      const model = viaPip ? `${name} via Pip` : name;
       const u = msg.usage ? ` · ${fmt(msg.usage.input)} in / ${fmt(msg.usage.output)} out tokens` : '';
-      const payer = msg.model === 'claude-code' ? `${msg.via}'s Claude subscription` : msg.via;
+      const payer = viaPip ? `${msg.via}'s Claude subscription` : msg.via;
       foot.textContent = `${model} · paid by ${payer}${u}`;
       foot.hidden = false;
     }
@@ -320,6 +359,7 @@
     sel.innerHTML = '';
     for (const [id, m] of Object.entries(state.models)) sel.append(new Option(m.label, id));
     sel.value = store.get('model', 'claude-opus-5-5');
+    if (!sel.value) sel.value = 'claude-opus-5-5';
     $('s-effort').value = store.get('effort', 'medium');
     $('s-name').value = store.get('name');
     $('s-key').value = store.get('apiKey');
@@ -337,6 +377,33 @@
   }
   $('s-billing').addEventListener('change', showBilling);
   $('open-settings').addEventListener('click', openSettings);
+
+  // ---------- usage ----------
+  $('open-usage').addEventListener('click', () => {
+    const people = new Map();
+    for (const m of state.messages.values()) {
+      if (m.type !== 'claude' || m.streaming || !m.via) continue;
+      const p = people.get(m.via) || { asks: 0, input: 0, output: 0, sub: 0, api: 0 };
+      p.asks++;
+      p.input += m.usage?.input || 0;
+      p.output += m.usage?.output || 0;
+      if (m.billing === 'pip' || m.model === 'claude-code') p.sub++; else p.api++;
+      people.set(m.via, p);
+    }
+    const rows = [...people.entries()].sort((a, b) => b[1].asks - a[1].asks);
+    const t = $('usage-table');
+    if (!rows.length) { t.innerHTML = '<tr><td>Nobody has asked Claude in this room yet.</td></tr>'; $('usage').showModal(); return; }
+    const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const paidWith = (p) => [p.sub && '🐾 subscription', p.api && '🔑 API key'].filter(Boolean).join(' + ');
+    let tot = { asks: 0, input: 0, output: 0 };
+    t.innerHTML = '<tr><th>Person</th><th class="num">Questions</th><th class="num">Tokens in</th><th class="num">Tokens out</th><th>Paid with</th></tr>' +
+      rows.map(([name, p]) => {
+        tot.asks += p.asks; tot.input += p.input; tot.output += p.output;
+        return `<tr><td>${esc(name)}</td><td class="num">${p.asks}</td><td class="num">${fmt(p.input)}</td><td class="num">${fmt(p.output)}</td><td>${paidWith(p)}</td></tr>`;
+      }).join('') +
+      `<tr class="total"><td>Total</td><td class="num">${tot.asks}</td><td class="num">${fmt(tot.input)}</td><td class="num">${fmt(tot.output)}</td><td></td></tr>`;
+    $('usage').showModal();
+  });
   $('settings').addEventListener('close', () => {
     if ($('settings').returnValue !== 'save') return;
     store.set('apiKey', $('s-key').value.trim());
@@ -346,5 +413,5 @@
     send({ t: 'settings', apiKey: store.get('apiKey'), model: store.get('model'), effort: store.get('effort'), billing: store.get('billing'), pairCode: store.get('pairCode') });
   });
 
-  showSetup();
+  if (autoJoin) connect(); else showSetup();
 })();

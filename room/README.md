@@ -22,6 +22,10 @@ For people outside your network, host it somewhere public (any Node host such as
 - You can join without a key and just chat; you only need one to ask Claude.
 - Rooms are saved to `data/` (messages only, never keys), so the history is there when people come back.
 
+## Easiest way: host from Pip
+
+Pip has this built in: tap Pip → 👥 → **Host**. It runs this server for you, makes a public link and opens the room. See the main [README](../README.md#chat-together-everyone-on-their-own-subscription).
+
 ## Use your Claude subscription instead of an API key (Pip)
 
 Each person can choose in **Settings** how their own questions are paid:

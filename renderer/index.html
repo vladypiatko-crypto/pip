@@ -16,11 +16,31 @@
       <strong id="panel-title">Pip</strong>
       <span class="spacer"></span>
       <button id="btn-new" class="icon" title="New chat">＋</button>
+      <button id="btn-history" class="icon" title="Continue a chat">🕘</button>
+      <button id="btn-rooms" class="icon" title="Chat together in a room">👥</button>
+      <button id="btn-usage" class="icon" title="Usage">📊</button>
       <button id="btn-gear" class="icon" title="Settings">⚙</button>
       <button id="btn-close" class="icon" title="Close">✕</button>
     </header>
 
     <div id="chat" class="chat">
+      <div class="modelbar">
+        <select id="pick-model" title="Model">
+          <option value="">Model: default</option>
+          <option value="claude-opus-5-5">Opus 5.5</option>
+          <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+          <option value="claude-haiku-5-5">Haiku 5.5</option>
+          <option value="claude-fable-5-1">Fable 5.1</option>
+        </select>
+        <select id="pick-effort" title="Effort: how hard Claude thinks (more effort uses more of your plan)">
+          <option value="">Effort: default</option>
+          <option value="low">Low effort</option>
+          <option value="medium">Medium effort</option>
+          <option value="high">High effort</option>
+          <option value="xhigh">Extra high effort</option>
+          <option value="max">Max effort</option>
+        </select>
+      </div>
       <div id="log" class="log"></div>
       <div id="activity" class="activity" hidden></div>
       <form id="composer" class="composer">
@@ -40,19 +60,60 @@
       <p class="hint">With access, Pip can see your screen, use the mouse and keyboard, and create files in its projects folder. It runs on your own Claude Code subscription.</p>
       <button id="btn-folder" class="ghost">Open Pip Projects folder</button>
 
-      <h4>Claude Room</h4>
-      <p class="hint">Let Pip answer for you in a shared room using your subscription. In the room, open Settings, pick "Use my Claude subscription (Pip)", and copy the pairing code.</p>
-      <input id="room-link" placeholder="Room link, e.g. https://…/r/launch-plan-abc123">
-      <input id="room-code" placeholder="Pairing code" maxlength="8">
-      <div class="row">
-        <button id="btn-room" class="primary">Connect</button>
-        <button id="btn-room-off" class="ghost" hidden>Disconnect</button>
-        <span id="room-status" class="hint"></span>
-      </div>
-
       <div class="row bottom">
         <button id="btn-quit" class="ghost">Quit Pip</button>
       </div>
+    </div>
+
+    <!-- Continue a previous chat -->
+    <div id="history" class="view" hidden>
+      <ul id="chat-list" class="list"></ul>
+    </div>
+
+    <!-- Usage viewer -->
+    <div id="usage" class="view" hidden>
+      <h4>Your Claude plan</h4>
+      <div id="limits"></div>
+      <h4>Pip's usage</h4>
+      <div class="seg" id="usage-range">
+        <button data-r="today" class="on">Today</button><button data-r="week">7 days</button><button data-r="month">30 days</button>
+      </div>
+      <div id="usage-totals" class="totals"></div>
+      <div id="usage-chart" class="chart" title="Tokens per day, last 14 days"></div>
+      <div id="usage-models"></div>
+      <p class="hint">Tokens are the pieces of text Claude reads and writes. "In" includes the whole conversation Claude re-reads each time.</p>
+    </div>
+
+    <!-- Rooms: chat together, everyone on their own subscription -->
+    <div id="rooms" class="view" hidden>
+      <p class="hint">Chat with friends and Claude in one shared room. Everyone who asks Claude pays with <b>their own</b> Claude subscription, through their own Pip.</p>
+      <label class="field">Your name in rooms <input id="my-name" maxlength="40" placeholder="e.g. Vlad"></label>
+
+      <h4>Host a new room</h4>
+      <div class="row nowrap"><input id="host-name" maxlength="60" placeholder="Room name, e.g. Game jam"><button id="btn-host" class="primary">Host</button></div>
+      <div id="host-result" class="invite" hidden>
+        <div class="hint" id="host-note">Send this invite link to your friends:</div>
+        <div class="row nowrap"><code id="invite-link"></code><button id="btn-copy" class="ghost">Copy</button></div>
+        <button id="btn-stop-host" class="ghost small">Stop hosting</button>
+      </div>
+
+      <h4>Join a friend's room</h4>
+      <div class="row nowrap"><input id="join-link" placeholder="Paste the invite link"><button id="btn-join" class="primary">Join</button></div>
+      <p class="hint" id="room-status"></p>
+
+      <h4>Recent rooms</h4>
+      <ul id="room-list" class="list"></ul>
+
+      <details>
+        <summary class="hint">Room already open in a web browser?</summary>
+        <p class="hint">In the room, open Settings, pick "My Claude subscription (Pip)", and enter the link and pairing code here.</p>
+        <input id="room-link" placeholder="Room link">
+        <input id="room-code" placeholder="Pairing code" maxlength="8">
+        <div class="row">
+          <button id="btn-room" class="primary">Connect</button>
+          <button id="btn-room-off" class="ghost" hidden>Disconnect</button>
+        </div>
+      </details>
     </div>
   </section>
 

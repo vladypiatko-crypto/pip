@@ -53,6 +53,10 @@ npm start
 - The **first time** you ask for something, Pip asks once: *"Can Pip use your computer?"* **Allow** lets it see your screen, use the mouse and keyboard, and create files and run commands in its own `Documents/Pip Projects` folder. **Chat only** means it just talks. You can change this any time in Pip's settings (⚙) or from the tray menu.
 - While Pip works, it shows what it's doing ("👀 Looking at your screen", "🖱️ Clicking", "📝 Writing a file"). Press **Stop** at any time.
 - **＋** starts a new conversation. Otherwise Pip remembers what you were doing.
+- **🕘 Continue a chat:** every conversation is saved. Pick one to carry on right where you left off, and Pip remembers everything from it.
+- **Model and effort:** the two menus above the chat pick the model (Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable 5.1, if your plan includes it) and how hard Claude thinks (low to max). Lower effort and smaller models use less of your plan.
+- **📊 Usage:** see how much of your plan's **5-hour** and **weekly** limits you've used and when they reset, plus how many answers and tokens Pip used today, this week and this month, a 14-day chart, and a breakdown by model and by shared rooms.
+- **👥 Chat together:** see below.
 - Pip won't type passwords or payment details, buy things, or delete your files. It stops and asks you to do those parts.
 
 ## Skins
@@ -84,15 +88,21 @@ No Blender app? `pip install bpy` gives you Blender as a Python module, then run
 
 To add a new accessory, model it in `blender/build_pet.py` and give it a `part` name (see how `crown` is done), then list that name in a skin's `parts`.
 
-## Use your subscription in a shared Claude Room
+## Chat together, everyone on their own subscription
 
-Pip can answer for you in a [Claude Room](room/) shared chat (it's in the `room/` folder of this repo, and anyone can host it with `cd room && npm install && npm start`):
+Tap Pip, then **👥**:
 
-1. In the room (in your browser), open **Settings** → *Pay for my questions with* → **My Claude subscription (Pip desktop pet)**. You'll see the room link and a pairing code.
-2. In Pip, open ⚙ → **Claude Room**, paste the link and the code, and press **Connect**.
-3. Now when *you* press **Ask Claude** in the room, your Pip answers with your Claude Code, and everyone sees "paid by *your name*'s Claude subscription".
+1. **Host:** type your name and a room name, and press **Host**. Pip starts the room on your computer, makes a free public link, opens the room in its own window, and copies the invite link for you. Send that link to your friends.
+2. **Join:** your friends paste the link into *their* Pip (👥 → **Join**). The room opens for them already joined.
+3. Everyone chats in one room. Press **Ask Claude**, or start a message with `@claude`, and Claude reads the whole conversation and answers. **Whoever asks pays with their own subscription**, through their own Pip and Claude Code. Each answer says "paid by *name*'s Claude subscription", and the **Usage** button in the room shows who used what.
+4. Each person picks their own model and effort in the room's **Settings**. **Recent rooms** in 👥 reopens a room later, with the whole history kept.
 
-Room questions are **chat only**: Pip turns off all of Claude's tools for them, so other people's messages can never make it touch your computer.
+Good to know:
+- The host's computer has to stay on with Pip running. If the host closes Pip and hosts the room again later, the history is still there, but the public link is new, so share the new one.
+- If the public link can't be created (some work or school networks block it), Pip gives a same-Wi-Fi link instead.
+- Friends without Pip can still join from a web browser and use an Anthropic API key in the room's Settings.
+- Room questions are **chat only**: Pip turns off all of Claude's tools for them, so other people's messages can never make it touch your computer.
+- Want a room that's always online? Run the server in [`room/`](room/) on any always-on computer or host (`cd room && npm install && npm start`), then join it from Pip with its link.
 
 ## How it works
 
@@ -111,7 +121,8 @@ Room questions are **chat only**: Pip turns off all of Claude's tools for them, 
 - `renderer/`: the 3D pet (moods: idle, thinking, working, talking, happy, sad), the chat bubble and settings.
 - `lib/claude.js`: runs the unmodified `claude` program and reads its streaming output. It removes `ANTHROPIC_API_KEY` from the environment so your subscription is used, not an API key.
 - `lib/control.js` and `mcp/computer-server.mjs`: the computer-use tools (screenshot, click, move_mouse, drag, type_text, press_keys, scroll, wait, open). They only work while you've allowed computer access, and only for requests carrying a secret token created at startup.
-- `lib/room.js`: the Claude Room link.
+- `lib/room.js`: the Claude Room link. `lib/host.js`: one-click hosting (the room server plus a Cloudflare quick tunnel for the public link).
+- Model/effort come from Claude Code's `--model` and `--effort` options. Continue uses `--resume`. Usage comes from the token counts and plan limits Claude Code reports with each answer, saved in Pip's settings folder (`usage.json`, `chats.json`).
 - Skin designer: the `save_skin`, `wear_skin`, `list_skins` and `delete_skin` tools in `mcp/computer-server.mjs`. `main.js` checks every value Claude sends before saving it, and the pet builds the shapes in `renderer/pet3d.js`.
 - `install.sh` and `install.ps1`: the one-command installers.
 - `room/`: the Claude Room shared chat server. `docs/subscriptions-research.md` has the research on using Claude subscriptions in shared apps.

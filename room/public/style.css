@@ -156,3 +156,17 @@ dialog h3 { margin: 0 0 14px; }
 .pair div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .pair code { user-select: all; overflow-wrap: anywhere; font-size: 13px; }
 .pair code.big { font-size: 22px; letter-spacing: .12em; font-weight: 700; }
+
+.recent { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 12px; }
+.recent h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.recent ul { list-style: none; margin: 0; padding: 0; }
+.recent li a { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: var(--text); }
+.recent li a:hover { background: var(--panel-2); }
+.recent li span { color: var(--muted); font-size: 12px; }
+dialog#usage { width: min(560px, calc(100vw - 32px)); }
+.table-wrap { overflow-x: auto; margin-bottom: 12px; }
+#usage-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+#usage-table th, #usage-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+#usage-table th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+#usage-table td.num, #usage-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+#usage-table tr.total td { font-weight: 700; border-bottom: none; }
