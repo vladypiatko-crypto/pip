@@ -40,6 +40,14 @@
   $env:Path = "$nodeDir;$env:Path"
 
   # 2. Pip itself. Your settings and custom skins live elsewhere, so updating keeps them.
+  # Which version is this? (shown in Pip's settings and used to check for updates)
+  $sha = 'local'; $date = ''
+  if (-not $env:PIP_SOURCE) {
+    try {
+      $meta = Invoke-RestMethod "https://api.github.com/repos/$Repo/commits/$Branch" -UseBasicParsing
+      $sha = $meta.sha; $date = $meta.commit.committer.date
+    } catch { $sha = 'unknown' }
+  }
   Say 'Downloading Pip...'
   $zip = Join-Path $tmp 'pip.zip'
   Invoke-WebRequest $Source -OutFile $zip -UseBasicParsing
@@ -54,6 +62,9 @@
     & (Join-Path $nodeDir 'npm.cmd') install --no-audit --no-fund --loglevel=error --update-notifier=false
     if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
   } finally { Pop-Location }
+
+  [ordered]@{ repo = $Repo; branch = $Branch; sha = $sha; date = "$date"; installedAt = (Get-Date).ToUniversalTime().ToString('s') + 'Z' } |
+    ConvertTo-Json -Compress | Set-Content -Encoding ASCII (Join-Path $newApp 'INSTALL.json')
 
   $app = Join-Path $PipDir 'app'
   Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app*" } | Stop-Process -Force
@@ -84,8 +95,32 @@
     $lnk.Save()
   }
 
+  # 5. A "pip-pet" command:  pip-pet  /  pip-pet update  /  pip-pet version
+  $binDir = Join-Path $PipDir 'bin'
+  New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+  $installUrl = "https://raw.githubusercontent.com/$Repo/$Branch/install.ps1"
+  @(
+    '@echo off',
+    'if /i "%~1"=="update" (',
+    "  set PIP_REPO=$Repo",
+    "  set PIP_BRANCH=$Branch",
+    "  powershell -NoProfile -ExecutionPolicy Bypass -Command ""irm $installUrl | iex""",
+    '  exit /b',
+    ')',
+    'if /i "%~1"=="version" (',
+    "  type ""$app\INSTALL.json""",
+    '  exit /b',
+    ')',
+    "start """" ""$electron"" ""$app"" %*"
+  ) | Set-Content -Encoding ASCII (Join-Path $binDir 'pip-pet.cmd')
+  $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+  if (-not ($userPath -split ';' | Where-Object { $_ -eq $binDir })) {
+    [Environment]::SetEnvironmentVariable('Path', ($(if ($userPath) { "$userPath;" } else { '' }) + $binDir), 'User')
+  }
+
   Say 'Pip is installed!'
   Write-Host '   - Start it any time from the Start menu or the "Pip" icon on your desktop.'
+  Write-Host '   - Update later with: pip-pet update   (in a new terminal), or the Update button in Pip''s settings.'
   Write-Host '   - First time? If Pip says Claude Code is not signed in, tap "Sign in to Claude" and log in with your Claude subscription.'
 
   if (-not $env:PIP_NO_LAUNCH) {

@@ -84,7 +84,7 @@ window.addEventListener('keydown', (e) => { if (e.key === 'Escape') togglePanel(
 
 const VIEWS = {
   chat: { title: 'Pip' },
-  settings: { title: 'Pip settings', render: () => renderSettings() },
+  settings: { title: 'Pip settings', render: () => { renderSettings(); renderVersion(); } },
   history: { title: 'Continue a chat', render: () => renderHistory() },
   usage: { title: 'Usage', render: () => renderUsage() },
   rooms: { title: 'Chat together', render: () => renderRooms() },
@@ -236,6 +236,38 @@ $('opt-wander').onchange = (e) => pip.updateSettings({ wander: e.target.checked 
 $('opt-access').onchange = (e) => pip.updateSettings({ computerAccess: e.target.checked ? 'granted' : 'denied' });
 $('btn-folder').onclick = () => pip.openFolder();
 $('btn-quit').onclick = () => pip.quit();
+// ---------- updates ----------
+const shortDate = (d) => (d ? new Date(d).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+async function renderVersion() {
+  const v = await pip.version();
+  $('version-text').textContent = v
+    ? `Version ${String(v.sha || 'unknown').slice(0, 7)}${v.date ? ` (${shortDate(v.date)})` : ''}`
+    : 'Version: running from source';
+}
+async function checkUpdate() {
+  $('update-status').textContent = 'Checking…';
+  $('btn-update').hidden = true;
+  const r = await pip.checkUpdate();
+  if (r.error) { $('update-status').textContent = r.error; return; }
+  if (r.upToDate) { $('update-status').textContent = 'You have the newest version ✓'; return; }
+  $('update-status').textContent = `New version from ${shortDate(r.latest.date)}: ${r.latest.message}`;
+  $('btn-update').hidden = false;
+}
+$('btn-check-update').onclick = checkUpdate;
+$('btn-update').onclick = async () => {
+  $('btn-update').disabled = true;
+  $('update-status').textContent = 'Updating… Pip will close and come back in about a minute.';
+  const r = await pip.update();
+  if (r.error) { $('update-status').textContent = r.error; $('btn-update').disabled = false; }
+};
+pip.onOpenView((v) => { togglePanel(true); showView(v); });
+pip.onCheckUpdate(() => checkUpdate());
+pip.onUpdateAvailable((r) => {
+  $('bubble').textContent = '✨ A new Pip update is ready! Tap me, then ⚙ to update.';
+  $('bubble').hidden = false;
+  setTimeout(() => ($('bubble').hidden = true), 15000);
+});
+
 // ---------- model & effort ----------
 $('pick-model').value = settings.model || '';
 $('pick-effort').value = settings.effort || '';

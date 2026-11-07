@@ -545,6 +545,53 @@ ipcMain.on('room:forget', (_e, id) => {
 });
 ipcMain.on('pet:copy', (_e, text) => clipboard.writeText(String(text)));
 
+// ---------- updates ----------
+// The installer writes INSTALL.json (which version is installed) next to the app.
+const PIP_HOME = path.dirname(__dirname); // ~/.pip-pet or %LOCALAPPDATA%\PipPet when installed
+function installedVersion() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'INSTALL.json'), 'utf8')); } catch { return null; }
+}
+async function checkForUpdate() {
+  const v = installedVersion();
+  if (!v || !/^[\w.-]+\/[\w.-]+$/.test(v.repo || '')) return { error: 'This copy of Pip wasn\'t installed with the installer, so it can\'t update itself. (Running from source? Use git pull.)' };
+  try {
+    const res = await fetch(`https://api.github.com/repos/${v.repo}/commits/${encodeURIComponent(v.branch || 'main')}`, { headers: { 'User-Agent': 'pip-desktop-pet' } });
+    if (!res.ok) throw new Error(`GitHub said ${res.status}`);
+    const c = await res.json();
+    const latest = { sha: c.sha, date: c.commit?.committer?.date, message: String(c.commit?.message || '').split('\n')[0] };
+    settings.lastUpdateCheck = Date.now();
+    saveSettings();
+    return { installed: v, latest, upToDate: !!v.sha && v.sha === latest.sha };
+  } catch (err) {
+    return { error: `Couldn't check for updates: ${err.message}` };
+  }
+}
+function runUpdate() {
+  const v = installedVersion();
+  if (!v) return { error: 'This copy of Pip can\'t update itself.' };
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  try {
+    if (process.platform === 'win32') {
+      const cmd = path.join(PIP_HOME, 'bin', 'pip-pet.cmd');
+      if (!fs.existsSync(cmd)) return { error: 'Update helper is missing. Run the install command again.' };
+      spawn('cmd.exe', ['/c', 'start', 'Updating Pip', 'cmd', '/c', cmd, 'update'], { detached: true, stdio: 'ignore', env }).unref();
+    } else {
+      const launcher = path.join(os.homedir(), '.local', 'bin', 'pip-pet');
+      if (!fs.existsSync(launcher)) return { error: 'Update helper is missing. Run the install command again.' };
+      const log = path.join(PIP_HOME, 'update.log');
+      spawn('/bin/bash', ['-c', `sleep 1; "${launcher}" update > "${log}" 2>&1`], { detached: true, stdio: 'ignore', env }).unref();
+    }
+  } catch (err) {
+    return { error: `Couldn't start the update: ${err.message}` };
+  }
+  setTimeout(() => app.quit(), 300); // the installer starts the new Pip when it's done
+  return { ok: true };
+}
+ipcMain.handle('pip:version', () => installedVersion());
+ipcMain.handle('pip:check-update', () => checkForUpdate());
+ipcMain.handle('pip:update', () => runUpdate());
+
 // ---------- tray ----------
 function buildTray() {
   if (!tray) {
@@ -558,6 +605,7 @@ function buildTray() {
     { label: 'Float around', type: 'checkbox', checked: settings.wander, click: (i) => { settings.wander = i.checked; saveSettings(); } },
     { label: 'Computer access', type: 'checkbox', checked: settings.computerAccess === 'granted', click: (i) => { settings.computerAccess = i.checked ? 'granted' : 'denied'; saveSettings(); } },
     { label: 'Open Pip Projects folder', click: () => shell.openPath(workspace()) },
+    { label: 'Check for updates…', click: () => { win.show(); send('pet:open-view', 'settings'); send('pet:check-update'); } },
     { type: 'separator' },
     { label: 'Quit Pip', click: () => app.quit() },
   ]));
@@ -600,6 +648,12 @@ app.whenReady().then(async () => {
   buildTray();
   settings.room = null; // rooms reopen from the Rooms list
   setInterval(wanderTick, 9000);
+  // Once a day, quietly check for a new version.
+  setTimeout(async () => {
+    if (!installedVersion() || Date.now() - (settings.lastUpdateCheck || 0) < 864e5) return;
+    const r = await checkForUpdate();
+    if (r.latest && !r.upToDate) send('pet:update-available', r);
+  }, 15000);
 });
 
 app.on('window-all-closed', () => app.quit());

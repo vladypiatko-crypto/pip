@@ -26,9 +26,21 @@ The installer:
 - adds **Pip** to your apps (a `pip-pet` command on Mac/Linux, Start menu and desktop shortcuts on Windows);
 - starts Pip.
 
-Pip appears in the bottom-right corner of your screen. The first time, if Claude Code isn't signed in yet, Pip shows a **Sign in to Claude** button that opens the sign-in for your Pro or Max plan. To update Pip later, just run the same command again: your settings and skins are kept.
+Pip appears in the bottom-right corner of your screen. The first time, if Claude Code isn't signed in yet, Pip shows a **Sign in to Claude** button that opens the sign-in for your Pro or Max plan. To update Pip later, run `pip-pet update` (see below).
 
 Pip runs on desktops and laptops (Windows, macOS, Linux), not on phones or tablets.
+
+### Update
+
+Open a terminal (PowerShell on Windows) and run:
+
+```bash
+pip-pet update
+```
+
+Or tap Pip → ⚙ → **Check for updates** → **Update now**. Pip also checks once a day and tells you when there's a new version. Your settings, skins, chats and rooms are kept. `pip-pet version` shows which version you have.
+
+(It's called `pip-pet`, not `pip`, because `pip` is already Python's installer on many computers.)
 
 <details><summary>Install by hand instead (for developers)</summary>
 

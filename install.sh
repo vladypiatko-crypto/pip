@@ -11,6 +11,7 @@ set -euo pipefail
 REPO="${PIP_REPO:-vladypiatko-crypto/pip}"
 BRANCH="${PIP_BRANCH:-main}"
 SOURCE="${PIP_SOURCE:-https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH}"
+[ -n "${PIP_SOURCE:-}" ] && PIP_SOURCE_OVERRIDE=1
 NODE_VERSION="${PIP_NODE_VERSION:-22.23.4}"
 PIP_DIR="${PIP_HOME:-$HOME/.pip-pet}"
 
@@ -43,12 +44,23 @@ fi
 export PATH="$PIP_DIR/node/bin:$PATH"
 
 # 2. Pip itself. Your settings and custom skins live elsewhere, so updating keeps them.
+# Which version is this? (shown in Pip's settings and used to check for updates)
+SHA=local; DATE=""
+if [ -z "${PIP_SOURCE_OVERRIDE:-}" ]; then
+  META="$(curl -fsSL "https://api.github.com/repos/$REPO/commits/$BRANCH" 2>/dev/null || true)"
+  SHA="$(printf '%s' "$META" | grep -m1 '"sha"' | sed 's/.*"sha": *"\([0-9a-f]*\)".*/\1/')"
+  DATE="$(printf '%s' "$META" | grep -m1 '"date"' | sed 's/.*"date": *"\([^"]*\)".*/\1/')"
+  [ -n "$SHA" ] || SHA=unknown
+fi
 say "Downloading Pip…"
 rm -rf "$PIP_DIR/app.new"
 mkdir -p "$PIP_DIR/app.new"
 curl -fsSL "$SOURCE" | tar -xz -C "$PIP_DIR/app.new" --strip-components=1
 say "Installing Pip's parts (about a minute)…"
 (cd "$PIP_DIR/app.new" && npm install --no-audit --no-fund --loglevel=error --update-notifier=false)
+printf '{"repo":"%s","branch":"%s","sha":"%s","date":"%s","installedAt":"%s"}\n' "$REPO" "$BRANCH" "$SHA" "$DATE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$PIP_DIR/app.new/INSTALL.json"
+# Close a running Pip so the new version can start (your settings are safe).
+if command -v pkill >/dev/null; then pkill -f "$PIP_DIR/app/node_modules/electron" 2>/dev/null && sleep 1 || true; fi
 rm -rf "$PIP_DIR/app.old"
 [ -d "$PIP_DIR/app" ] && mv "$PIP_DIR/app" "$PIP_DIR/app.old"
 mv "$PIP_DIR/app.new" "$PIP_DIR/app"
@@ -71,11 +83,37 @@ else
   ELECTRON="$PIP_DIR/app/node_modules/electron/dist/electron"
   LAUNCH_ARGS="--no-sandbox" # per-user installs can't set up Chromium's setuid sandbox
 fi
-cat > "$HOME/.local/bin/pip-pet" <<EOF
+cat > "$HOME/.local/bin/pip-pet" <<LAUNCHER
 #!/usr/bin/env bash
-exec "$ELECTRON" $LAUNCH_ARGS "$PIP_DIR/app" "\$@"
-EOF
+# Pip launcher.  pip-pet          start Pip
+#                pip-pet update   update Pip to the newest version
+#                pip-pet version  show the installed version
+case "\${1:-}" in
+  update)
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/$BRANCH/install.sh" | PIP_REPO="$REPO" PIP_BRANCH="$BRANCH" bash
+    exit \$? ;;
+  version|--version|-v)
+    cat "$PIP_DIR/app/INSTALL.json"; exit 0 ;;
+  help|--help|-h)
+    echo "pip-pet          start Pip"
+    echo "pip-pet update   update Pip to the newest version"
+    echo "pip-pet version  show the installed version"
+    exit 0 ;;
+esac
+nohup "$ELECTRON" $LAUNCH_ARGS "$PIP_DIR/app" "\$@" >/dev/null 2>&1 &
+LAUNCHER
 chmod +x "$HOME/.local/bin/pip-pet"
+
+# Make sure "pip-pet" works in new terminals.
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *)
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+      if [ -f "$rc" ] || { [ "$rc" = "$HOME/.zshrc" ] && [ "$plat" = darwin ]; }; then
+        grep -q '# added by Pip' "$rc" 2>/dev/null || printf '\nexport PATH="$HOME/.local/bin:$PATH" # added by Pip\n' >> "$rc"
+      fi
+    done ;;
+esac
 
 if [ "$plat" = darwin ]; then
   APPDIR="$HOME/Applications/Pip.app/Contents"
@@ -114,6 +152,7 @@ fi
 
 say "Pip is installed! 🎉"
 echo "   • Start it any time: open \"Pip\" from your apps, or run: pip-pet"
+echo "   • Update later with: pip-pet update   (or the Update button in Pip's settings)"
 echo "   • First time? If Pip says Claude Code isn't signed in, tap \"Sign in to Claude\" and log in with your Claude subscription."
 [ "$plat" = darwin ] && echo "   • macOS will ask to allow Screen Recording and Accessibility the first time Pip uses your computer. Allow them, then restart Pip."
 
