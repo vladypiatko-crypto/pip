@@ -554,11 +554,20 @@ function installedVersion() {
 async function checkForUpdate() {
   const v = installedVersion();
   if (!v || !/^[\w.-]+\/[\w.-]+$/.test(v.repo || '')) return { error: 'This copy of Pip wasn\'t installed with the installer, so it can\'t update itself. (Running from source? Use git pull.)' };
+  const branch = v.branch || 'main';
   try {
-    const res = await fetch(`https://api.github.com/repos/${v.repo}/commits/${encodeURIComponent(v.branch || 'main')}`, { headers: { 'User-Agent': 'pip-desktop-pet' } });
+    // Newest version id, read the way `git` does (no API rate limit).
+    const res = await fetch(`https://github.com/${v.repo}.git/info/refs?service=git-upload-pack`, { headers: { 'User-Agent': 'git/2 pip-desktop-pet' } });
     if (!res.ok) throw new Error(`GitHub said ${res.status}`);
-    const c = await res.json();
-    const latest = { sha: c.sha, date: c.commit?.committer?.date, message: String(c.commit?.message || '').split('\n')[0] };
+    const esc = branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sha = ((await res.text()).match(new RegExp(`([0-9a-f]{40}) refs/heads/${esc}\\n`)) || [])[1];
+    if (!sha) throw new Error('could not find the newest version');
+    const latest = { sha, date: null, message: 'A new version of Pip is ready.' };
+    // Nice-to-have details (this API is rate limited, so it's optional).
+    try {
+      const c = await (await fetch(`https://api.github.com/repos/${v.repo}/commits/${sha}`, { headers: { 'User-Agent': 'pip-desktop-pet' } })).json();
+      if (c.commit) { latest.date = c.commit.committer?.date; latest.message = String(c.commit.message || '').split('\n')[0]; }
+    } catch {}
     settings.lastUpdateCheck = Date.now();
     saveSettings();
     return { installed: v, latest, upToDate: !!v.sha && v.sha === latest.sha };

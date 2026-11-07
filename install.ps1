@@ -43,10 +43,14 @@
   # Which version is this? (shown in Pip's settings and used to check for updates)
   $sha = 'local'; $date = ''
   if (-not $env:PIP_SOURCE) {
+    $sha = 'unknown'
     try {
-      $meta = Invoke-RestMethod "https://api.github.com/repos/$Repo/commits/$Branch" -UseBasicParsing
-      $sha = $meta.sha; $date = $meta.commit.committer.date
-    } catch { $sha = 'unknown' }
+      $refs = (Invoke-WebRequest "https://github.com/$Repo.git/info/refs?service=git-upload-pack" -UseBasicParsing).Content
+      if ($refs -is [byte[]]) { $refs = [Text.Encoding]::ASCII.GetString($refs) }
+      $m = [regex]::Match($refs, "([0-9a-f]{40}) refs/heads/$([regex]::Escape($Branch))\n")
+      if ($m.Success) { $sha = $m.Groups[1].Value }
+    } catch {}
+    try { $date = (Invoke-RestMethod "https://api.github.com/repos/$Repo/commits/$Branch" -UseBasicParsing).commit.committer.date } catch {}
   }
   Say 'Downloading Pip...'
   $zip = Join-Path $tmp 'pip.zip'

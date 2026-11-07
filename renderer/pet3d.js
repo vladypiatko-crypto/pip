@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MoodFx } from './fx.js';
 
 export class Pet3D {
   constructor(canvas, skins) {
@@ -29,9 +30,14 @@ export class Pet3D {
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.55;
 
-    this.camera = new THREE.PerspectiveCamera(30, canvas.clientWidth / canvas.clientHeight, 0.1, 50);
-    this.camera.position.set(0, 0.5, 7.2);
-    this.camera.lookAt(0, 0.22, 0);
+    // The canvas is taller than Pip so effects have room above its head. Keep Pip the same
+    // size on screen (30° for a 220px-tall view) and sitting at the bottom of the canvas.
+    const h = canvas.clientHeight, base = 220;
+    const fov = (2 * Math.atan(Math.tan((15 * Math.PI) / 180) * (h / base)) * 180) / Math.PI;
+    const lift = ((h - base) / 2) * ((2 * 7.2 * Math.tan((15 * Math.PI) / 180)) / base);
+    this.camera = new THREE.PerspectiveCamera(fov, canvas.clientWidth / h, 0.1, 50);
+    this.camera.position.set(0, 0.5 + lift, 7.2);
+    this.camera.lookAt(0, 0.22 + lift, 0);
 
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8888aa, 1.1));
     const key = new THREE.DirectionalLight(0xfff2e0, 2.2);
@@ -82,6 +88,9 @@ export class Pet3D {
     this.hands = [this.parts.hand_L, this.parts.hand_R].filter(Boolean);
     this.mouth = this.parts.mouth;
     this.bulb = this.parts.bulb;
+    this.fxAnchor = new THREE.Group(); // follows Pip's bobbing, but not its spinning
+    this.scene.add(this.fxAnchor);
+    this.fx = new MoodFx(this.fxAnchor);
     this.ready = true;
     this.loop();
   }
@@ -104,6 +113,7 @@ export class Pet3D {
       if (o.userData.part) o.visible = skin.parts.includes(o.userData.part);
     });
     this.buildExtras(skin.extras || []);
+    this.fx?.setColor(skin.bulb?.emissive || skin.bulb?.color || '#ffc857');
     this.squash = 1; // a little bounce when changing outfits
   }
 
@@ -137,11 +147,15 @@ export class Pet3D {
 
   // A picture of Pip for the skin list (transparent PNG).
   snapshot() {
+    if (this.fxAnchor) this.fxAnchor.visible = false;
     this.renderer.render(this.scene, this.camera);
-    return this.renderer.domElement.toDataURL('image/png');
+    const url = this.renderer.domElement.toDataURL('image/png');
+    if (this.fxAnchor) this.fxAnchor.visible = true;
+    return url;
   }
 
   setState(state) {
+    this.fx?.setState(state);
     if (state === this.state) return;
     this.state = state;
     this.stateSince = this.clock.elapsedTime;
@@ -230,6 +244,8 @@ export class Pet3D {
       bulbMat.emissiveIntensity = base * pulse;
     }
 
+    this.fxAnchor.position.copy(this.root.position);
+    this.fx.update(dt, t, this.mouth ? this.mouth.userData.basePos : new THREE.Vector3(0, -0.04, 0.93));
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -26,7 +26,7 @@ function overInteractive(e) {
   if (e.target.closest?.('.panel, .bubble')) return true;
   const r = $('pet').getBoundingClientRect();
   const dx = e.clientX - (r.left + r.width / 2);
-  const dy = e.clientY - (r.top + r.height * 0.55);
+  const dy = e.clientY - (r.bottom - 99); // Pip sits at the bottom of its (taller) canvas
   return Math.hypot(dx, dy) < 82;
 }
 window.addEventListener('mousemove', (e) => {
@@ -125,38 +125,148 @@ greet();
 
 function setWorking(on) {
   working = on;
-  $('btn-send').hidden = on;
+  $('btn-send').textContent = on ? 'Next' : 'Go';
+  $('btn-send').title = on ? 'Queue this message for when Pip finishes' : 'Send';
   $('btn-stop').hidden = !on;
-  $('input').disabled = on;
+  $('input').placeholder = on ? 'Type your next message… (Enter = do it next)' : 'Ask Pip… e.g. help me build a game';
   if (!on) { $('activity').hidden = true; $('bubble').hidden = true; }
 }
 
-$('composer').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const text = $('input').value.trim();
-  if (!text || working) return;
-  $('input').value = '';
+// While Pip works you can keep typing. Messages wait in a queue ("Next up") and are
+// sent together when Pip finishes, or right away with "Send now", which interrupts Pip.
+const queue = []; // { text, el }
+let interrupting = false;
+
+function send(text) {
   addMsg('me', text);
   replyEl = null;
   replyText = '';
   setWorking(true);
-  showActivity('💭 Thinking…');
-  const res = await pip.ask(text);
-  if (res?.error) { addMsg('err', res.error); setWorking(false); }
+  startCard();
+  return pip.ask(text).then((res) => { if (res?.error) { finishCard('error'); addMsg('err', res.error); setWorking(false); } });
+}
+
+// ---------- live "Pip is working" card in the chat ----------
+// A sparkle + shimmering label while Pip thinks, a list of steps that tick off as it
+// works, and a timer. When Pip finishes it folds into a small summary you can tap open.
+let card = null;
+const THINKING_WORDS = ['Thinking', 'Pondering', 'Figuring it out', 'Making a plan', 'Connecting the dots'];
+function startCard() {
+  finishCard('ok');
+  const el = document.createElement('div');
+  el.className = 'msg turn live';
+  el.dataset.mode = 'thinking';
+  el.innerHTML = '<div class="turn-head"><span class="spark" aria-hidden="true"></span><span class="label shimmer">Thinking</span><span class="dots"><i></i><i></i><i></i></span><span class="timer"></span></div><ol class="steps"></ol>';
+  el.querySelector('.turn-head').onclick = () => { if (el.classList.contains('finished')) el.classList.toggle('open'); };
+  $('log').append(el);
+  $('log').scrollTop = $('log').scrollHeight;
+  const c = { el, steps: [], start: Date.now(), word: 0 };
+  c.timer = setInterval(() => {
+    const sec = Math.round((Date.now() - c.start) / 1000);
+    el.querySelector('.timer').textContent = sec >= 2 ? `${sec}s` : '';
+    if (el.dataset.mode === 'thinking' && sec > 0 && sec % 3 === 0) setCardLabel(THINKING_WORDS[++c.word % THINKING_WORDS.length], 'thinking');
+  }, 1000);
+  card = c;
+}
+function setCardLabel(text, mode) {
+  if (!card) return;
+  card.el.querySelector('.label').textContent = text;
+  card.el.dataset.mode = mode;
+}
+function addStep(label) {
+  if (!card) startCard();
+  const clean = label.replace(/…$/, '');
+  const prev = card.steps[card.steps.length - 1];
+  if (prev && prev.label === clean && !prev.el.classList.contains('done')) {
+    prev.count++;
+    prev.el.querySelector('.n').textContent = `×${prev.count}`;
+  } else {
+    if (prev) prev.el.classList.add('done');
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="st"></span><span class="sl"></span><span class="n"></span>';
+    li.querySelector('.sl').textContent = clean;
+    card.el.querySelector('.steps').append(li);
+    card.steps.push({ label: clean, el: li, count: 1 });
+  }
+  setCardLabel(clean, 'working');
+  $('log').scrollTop = $('log').scrollHeight;
+}
+function finishCard(outcome) { // 'ok' | 'error' | 'stopped'
+  const c = card;
+  if (!c) return;
+  card = null;
+  clearInterval(c.timer);
+  c.steps.forEach((s) => s.el.classList.add('done'));
+  const sec = Math.max(1, Math.round((Date.now() - c.start) / 1000));
+  const t = sec >= 60 ? `${Math.floor(sec / 60)}m ${sec % 60}s` : `${sec}s`;
+  const n = c.steps.length;
+  const text = outcome === 'stopped' ? `Interrupted after ${t}`
+    : outcome === 'error' ? `Stopped after ${t}`
+    : n ? `Worked for ${t} · ${n} step${n > 1 ? 's' : ''}` : `Thought for ${t}`;
+  c.el.classList.remove('live');
+  c.el.classList.add('finished', outcome);
+  c.el.dataset.mode = 'done';
+  c.el.querySelector('.label').textContent = text;
+  c.el.querySelector('.timer').textContent = n ? '▸' : '';
+}
+
+function queueMessage(text) {
+  const el = document.createElement('div');
+  el.className = 'msg me queued';
+  el.innerHTML = `<div class="q-label">Next up</div><div class="q-text"></div><div class="q-actions"><button class="q-now" title="Stop what Pip is doing and send this now">Send now</button><button class="q-del" title="Remove">✕</button></div>`;
+  el.querySelector('.q-text').textContent = text;
+  const item = { text, el };
+  el.querySelector('.q-now').onclick = () => sendNow();
+  el.querySelector('.q-del').onclick = () => { queue.splice(queue.indexOf(item), 1); el.remove(); };
+  queue.push(item);
+  $('log').append(el);
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+function flushQueue() {
+  if (!queue.length) return false;
+  const text = queue.map((q) => q.text).join('\n\n');
+  for (const q of queue) q.el.remove();
+  queue.length = 0;
+  send(text);
+  return true;
+}
+
+function sendNow() {
+  if (!working) { flushQueue(); return; }
+  interrupting = true;
+  setCardLabel('Switching to your new message', 'working');
+  pip.stop(); // the queued messages go out as soon as Pip has stopped
+}
+
+$('composer').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = $('input').value.trim();
+  if (!text) return;
+  $('input').value = '';
+  if (working) queueMessage(text);
+  else send(text);
+});
+$('input').addEventListener('keydown', (e) => {
+  // Ctrl/Cmd+Enter while Pip works = send now (interrupt)
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && working) {
+    e.preventDefault();
+    const text = $('input').value.trim();
+    if (text) { $('input').value = ''; queueMessage(text); }
+    if (queue.length) sendNow();
+  }
 });
 $('btn-stop').onclick = () => pip.stop();
 
 function showActivity(label) {
-  $('activity').textContent = label;
-  $('activity').hidden = false;
   if ($('panel').hidden) { $('bubble').textContent = label; $('bubble').hidden = false; }
 }
 
 pip.onState((s) => pet.setState(s));
 pip.onMoving(({ dx }) => pet.setMoving(dx));
-pip.onTool((label) => showActivity(label + '…'));
+pip.onTool((label) => { addStep(label); showActivity(label + '…'); });
 pip.onText((t) => {
-  if (!replyEl) { replyEl = addMsg('pip', ''); replyEl.classList.add('typing'); }
+  if (!replyEl) { replyEl = addMsg('pip', ''); replyEl.classList.add('typing'); setCardLabel('Answering', 'talking'); }
   replyText += t;
   replyEl.innerHTML = markdown(replyText);
   $('log').scrollTop = $('log').scrollHeight;
@@ -164,6 +274,16 @@ pip.onText((t) => {
 });
 pip.onDone(({ error }) => {
   replyEl?.classList.remove('typing');
+  if (interrupting && error === 'Stopped.') {
+    interrupting = false;
+    finishCard('stopped');
+    setWorking(false);
+    replyEl = null;
+    flushQueue();
+    return;
+  }
+  interrupting = false;
+  finishCard(error ? (error === 'Stopped.' ? 'stopped' : 'error') : 'ok');
   if (error) {
     const el = addMsg('err', error);
     if (/not signed in/i.test(error)) {
@@ -177,6 +297,8 @@ pip.onDone(({ error }) => {
   }
   setWorking(false);
   replyEl = null;
+  // Anything typed while Pip was busy goes next.
+  if (queue.length) setTimeout(flushQueue, 400);
 });
 
 // ---------- settings ----------
@@ -250,7 +372,7 @@ async function checkUpdate() {
   const r = await pip.checkUpdate();
   if (r.error) { $('update-status').textContent = r.error; return; }
   if (r.upToDate) { $('update-status').textContent = 'You have the newest version ✓'; return; }
-  $('update-status').textContent = `New version from ${shortDate(r.latest.date)}: ${r.latest.message}`;
+  $('update-status').textContent = r.latest.date ? `New version from ${shortDate(r.latest.date)}: ${r.latest.message}` : r.latest.message;
   $('btn-update').hidden = false;
 }
 $('btn-check-update').onclick = checkUpdate;

@@ -63,7 +63,8 @@ npm start
 
 - **Tap** Pip to open the chat. **Drag** Pip to move it.
 - The **first time** you ask for something, Pip asks once: *"Can Pip use your computer?"* **Allow** lets it see your screen, use the mouse and keyboard, and create files and run commands in its own `Documents/Pip Projects` folder. **Chat only** means it just talks. You can change this any time in Pip's settings (⚙) or from the tray menu.
-- While Pip works, it shows what it's doing ("👀 Looking at your screen", "🖱️ Clicking", "📝 Writing a file"). Press **Stop** at any time.
+- While Pip works, a live card in the chat shows what it's doing: a spinning sparkle and shimmering "Thinking…", then each step ("👀 Looking at your screen", "🖱️ Clicking", "📝 Writing a file") ticking off with ✓, plus a timer. When Pip is done it folds into "✓ Worked for 12s · 3 steps", which you can tap to see the steps. Pip itself shows its mood too: glowing dots circle its head while it thinks, sparks orbit it while it works, rings pulse from its mouth while it talks, and confetti bursts when it's done.
+- **Keep typing while Pip works:** press Enter and your message waits as **Next up**, then goes out as soon as Pip finishes. Tap **Send now** (or press Ctrl/Cmd+Enter) to interrupt Pip and switch to your new message straight away. Press **Stop** to just stop.
 - **＋** starts a new conversation. Otherwise Pip remembers what you were doing.
 - **🕘 Continue a chat:** every conversation is saved. Pick one to carry on right where you left off, and Pip remembers everything from it.
 - **Model and effort:** the two menus above the chat pick the model (Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable 5.1, if your plan includes it) and how hard Claude thinks (low to max). Lower effort and smaller models use less of your plan.

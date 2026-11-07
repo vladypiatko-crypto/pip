@@ -47,8 +47,8 @@ export PATH="$PIP_DIR/node/bin:$PATH"
 # Which version is this? (shown in Pip's settings and used to check for updates)
 SHA=local; DATE=""
 if [ -z "${PIP_SOURCE_OVERRIDE:-}" ]; then
+  SHA="$(curl -fsSL "https://github.com/$REPO.git/info/refs?service=git-upload-pack" 2>/dev/null | grep -ao "[0-9a-f]\{40\} refs/heads/$BRANCH\$" | head -1 | cut -c1-40 || true)"
   META="$(curl -fsSL "https://api.github.com/repos/$REPO/commits/$BRANCH" 2>/dev/null || true)"
-  SHA="$(printf '%s' "$META" | grep -m1 '"sha"' | sed 's/.*"sha": *"\([0-9a-f]*\)".*/\1/')"
   DATE="$(printf '%s' "$META" | grep -m1 '"date"' | sed 's/.*"date": *"\([^"]*\)".*/\1/')"
   [ -n "$SHA" ] || SHA=unknown
 fi
