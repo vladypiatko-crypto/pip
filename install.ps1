@@ -7,6 +7,9 @@
 # adds Pip to the Start menu and desktop, and starts Pip. Run it again any time to update.
 
 & {
+ $PipLog = Join-Path $(if ($env:PIP_HOME) { $env:PIP_HOME } else { Join-Path $env:LOCALAPPDATA 'PipPet' }) 'update.log'
+ try { New-Item -ItemType Directory -Force -Path (Split-Path $PipLog) | Out-Null; Start-Transcript -Path $PipLog -Force | Out-Null } catch {}
+ try {
   $ErrorActionPreference = 'Stop'
   $ProgressPreference = 'SilentlyContinue'   # makes downloads much faster
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -71,8 +74,20 @@
     ConvertTo-Json -Compress | Set-Content -Encoding ASCII (Join-Path $newApp 'INSTALL.json')
 
   $app = Join-Path $PipDir 'app'
-  Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$app*" } | Stop-Process -Force
-  if (Test-Path $app) { Remove-Item -Recurse -Force $app }
+  # Close Pip and anything it started from its folder (helpers, the room link tool...)
+  # so the old version can be replaced. Your settings, chats and skins live elsewhere.
+  Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like "$app\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+  if (Test-Path $app) {
+    $removed = $false
+    for ($i = 0; $i -lt 15 -and -not $removed; $i++) {
+      try { Remove-Item -Recurse -Force $app -ErrorAction Stop; $removed = $true }
+      catch {
+        Start-Sleep -Milliseconds 800
+        Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -like "$app\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+      }
+    }
+    if (-not $removed) { throw "Couldn't replace the old Pip (some of its files are still in use). Restart your computer and run the update again." }
+  }
   Move-Item $newApp $app
   Remove-Item -Recurse -Force $tmp
 
@@ -108,6 +123,7 @@
     'if /i "%~1"=="update" (',
     "  set PIP_REPO=$Repo",
     "  set PIP_BRANCH=$Branch",
+    '  set PIP_PAUSE=1',
     "  powershell -NoProfile -ExecutionPolicy Bypass -Command ""irm $installUrl | iex""",
     '  exit /b',
     ')',
@@ -131,4 +147,12 @@
     Say 'Starting Pip...'
     Start-Process -FilePath $electron -ArgumentList "`"$app`"" -WorkingDirectory $app
   }
+ } catch {
+  Write-Host ''
+  Write-Host "[Pip] The install or update didn't finish: $($_.Exception.Message)" -ForegroundColor Red
+  Write-Host "[Pip] Details are saved in $PipLog" -ForegroundColor Red
+  if ($env:PIP_PAUSE) { Read-Host 'Press Enter to close' }
+ } finally {
+  try { Stop-Transcript | Out-Null } catch {}
+ }
 }

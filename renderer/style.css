@@ -289,3 +289,9 @@ select.wide:focus { outline: none; border-color: var(--accent); }
 #bk-fields .row { margin-bottom: 6px; }
 .banner { background: #fff3d6; color: #7a5300; border-radius: 10px; padding: 7px 10px; font-size: 12.5px; margin-bottom: 8px; }
 @media (prefers-color-scheme: dark) { .banner { background: #4a3a14; color: #ffd98a; } }
+
+/* The panel and bubbles sit above Pip's (taller, mostly transparent) canvas,
+   so clicks on the message box reach it instead of Pip. */
+.panel { z-index: 5; }
+.bubble { z-index: 5; }
+.pet-wrap { z-index: 1; }

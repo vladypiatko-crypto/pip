@@ -60,7 +60,8 @@ say "Installing Pip's parts (about a minute)…"
 (cd "$PIP_DIR/app.new" && npm install --no-audit --no-fund --loglevel=error --update-notifier=false)
 printf '{"repo":"%s","branch":"%s","sha":"%s","date":"%s","installedAt":"%s"}\n' "$REPO" "$BRANCH" "$SHA" "$DATE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$PIP_DIR/app.new/INSTALL.json"
 # Close a running Pip so the new version can start (your settings are safe).
-if command -v pkill >/dev/null; then pkill -f "$PIP_DIR/app/node_modules/electron" 2>/dev/null && sleep 1 || true; fi
+# (also anything else started from Pip's folder, like the room link tool)
+if command -v pkill >/dev/null; then pkill -f "$PIP_DIR/app/" 2>/dev/null && sleep 1 || true; fi
 rm -rf "$PIP_DIR/app.old"
 [ -d "$PIP_DIR/app" ] && mv "$PIP_DIR/app" "$PIP_DIR/app.old"
 mv "$PIP_DIR/app.new" "$PIP_DIR/app"

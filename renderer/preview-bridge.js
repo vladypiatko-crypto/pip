@@ -34,6 +34,7 @@ export default {
   async version() { return { sha: 'f64a24a0', date: new Date().toISOString() }; },
   async checkUpdate() { return { upToDate: false, latest: { sha: 'abc', date: new Date().toISOString(), message: 'Add a pip-pet update command' } }; },
   async update() { return { ok: true }; },
+  openUpdateLog() {},
   onOpenView: on('pet:open-view'), onCheckUpdate: on('pet:check-update'), onUpdateAvailable: on('pet:update-available'),
   async listChats() { return [{ id: 'a', title: 'Help me build a game', updated: Date.now() - 3600e3, count: 6 }, { id: 'b', title: 'Design yourself a pirate skin', updated: Date.now() - 86400e3 * 2, count: 2 }]; },
   async openChat() { return { messages: [{ role: 'me', text: 'Help me build a game' }, { role: 'pip', text: 'Done! I made **Star Hopper** in your Pip Projects folder.' }] }; },

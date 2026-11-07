@@ -686,6 +686,7 @@ function runUpdate() {
   return { ok: true };
 }
 ipcMain.handle('pip:version', () => installedVersion());
+ipcMain.on('pip:open-update-log', () => shell.openPath(path.join(PIP_HOME, 'update.log')));
 ipcMain.handle('pip:check-update', () => checkForUpdate());
 ipcMain.handle('pip:update', () => runUpdate());
 

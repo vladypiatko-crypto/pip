@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('pip', {
   version: () => ipcRenderer.invoke('pip:version'),
   checkUpdate: () => ipcRenderer.invoke('pip:check-update'),
   update: () => ipcRenderer.invoke('pip:update'),
+  openUpdateLog: () => ipcRenderer.send('pip:open-update-log'),
   onOpenView: on('pet:open-view'),
   onCheckUpdate: on('pet:check-update'),
   onUpdateAvailable: on('pet:update-available'),

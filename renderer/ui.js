@@ -438,6 +438,7 @@ async function checkUpdate() {
   $('btn-update').hidden = false;
 }
 $('btn-check-update').onclick = checkUpdate;
+$('btn-update-log').onclick = () => pip.openUpdateLog();
 $('btn-update').onclick = async () => {
   $('btn-update').disabled = true;
   $('update-status').textContent = 'Updating… Pip will close and come back in about a minute.';
